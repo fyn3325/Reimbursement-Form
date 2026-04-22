@@ -9,14 +9,40 @@ const BENEFIT_HISTORY_KEY = 'auditlink_benefit_claims_history';
 
 const CURRENCIES_LIST = ['MYR', 'USD', 'SGD', 'CNY', 'EUR', 'GBP', 'AUD', 'JPY', 'THB', 'IDR'];
 const DEFAULT_BENEFIT_TYPES = [
+  'Traveling',
+  'Incidentals',
+  'Accommodation',
+  'Subsistence',
   'Medical',
-  'Dental',
-  'Optical',
-  'Insurance',
-  'Training',
-  'Phone Allowance',
-  'Parking / Toll',
+  'Entertainment',
   'Other',
+];
+
+const DESCRIPTION_TO_TYPE: Record<string, string> = {
+  Petrol: 'Traveling',
+  Mileage: 'Traveling',
+  'Public Transport': 'Traveling',
+  Parking: 'Incidentals',
+  Toll: 'Incidentals',
+  Hotel: 'Accommodation',
+  Housing: 'Accommodation',
+  Laundry: 'Accommodation',
+  'Meals (Breakfast)': 'Subsistence',
+  'Meals (Lunch)': 'Subsistence',
+  'Meals (Dinner)': 'Subsistence',
+  GP: 'Medical',
+  Specialist: 'Medical',
+  Dental: 'Medical',
+  Meetings: 'Entertainment',
+};
+
+const DESCRIPTION_GROUPS: Array<{ type: string; items: string[] }> = [
+  { type: 'Traveling', items: ['Petrol', 'Mileage', 'Public Transport'] },
+  { type: 'Incidentals', items: ['Parking', 'Toll'] },
+  { type: 'Accommodation', items: ['Hotel', 'Housing', 'Laundry'] },
+  { type: 'Subsistence', items: ['Meals (Breakfast)', 'Meals (Lunch)', 'Meals (Dinner)'] },
+  { type: 'Medical', items: ['GP', 'Specialist', 'Dental'] },
+  { type: 'Entertainment', items: ['Meetings'] },
 ];
 
 function today(): string {
@@ -49,7 +75,7 @@ function createEmptyItem(): BenefitClaimItem {
   return {
     id: crypto.randomUUID(),
     date: today(),
-    benefitType: 'Medical',
+    benefitType: 'Traveling',
     description: '',
     amount: '',
     currency: 'MYR',
@@ -179,11 +205,11 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
         const payload: BenefitClaimItem = {
           id: crypto.randomUUID(),
           date: prefillFromMileage.employee.claimDate || today(),
-          benefitType: 'Mileage',
-          description: `Mileage claim ${prefillFromMileage.sourceMileageClaimNumber}`,
+          benefitType: 'Traveling',
+          description: 'Mileage',
           amount: prefillFromMileage.amount,
           currency: prefillFromMileage.currency,
-          receiptRef: '',
+          receiptRef: prefillFromMileage.sourceMileageClaimNumber,
           remarks: '',
         };
         if (firstEmpty) {
@@ -224,6 +250,16 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
   const removeItem = (id: string) => setItems((prev) => prev.filter((i) => i.id !== id));
   const updateItem = (id: string, field: keyof BenefitClaimItem, value: any) => {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, [field]: value } : i)));
+  };
+
+  const setDescriptionAndAutoType = (id: string, description: string) => {
+    const inferred = DESCRIPTION_TO_TYPE[description];
+    setItems((prev) =>
+      prev.map((i) => {
+        if (i.id !== id) return i;
+        return { ...i, description, benefitType: inferred || i.benefitType };
+      })
+    );
   };
 
   const saveClaim = async () => {
@@ -573,7 +609,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
               <thead className="bg-gray-50">
                 <tr className="text-xs font-bold text-gray-500 uppercase">
                   <th className="px-3 py-2 w-28">Date</th>
-                  <th className="px-3 py-2 w-44">Benefit</th>
+                  <th className="px-3 py-2 w-44">Type of Claim</th>
                   <th className="px-3 py-2">Description</th>
                   <th className="px-3 py-2 w-28 text-right">Amount</th>
                   <th className="px-3 py-2 w-24">Currency</th>
@@ -602,7 +638,39 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                       </select>
                     </td>
                     <td className="px-3 py-2">
-                      <input value={i.description} onChange={(e) => updateItem(i.id, 'description', e.target.value)} className="w-full text-sm bg-transparent focus:outline-none" placeholder="Short description" />
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={Object.prototype.hasOwnProperty.call(DESCRIPTION_TO_TYPE, i.description) ? i.description : ''}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (!v) return;
+                            setDescriptionAndAutoType(i.id, v);
+                          }}
+                          className="min-w-52 text-sm bg-transparent focus:outline-none border-b border-gray-200 focus:border-pink-600"
+                        >
+                          <option value="">Select…</option>
+                          {DESCRIPTION_GROUPS.map((g) => (
+                            <optgroup key={g.type} label={g.type}>
+                              {g.items.map((it) => (
+                                <option key={it} value={it}>
+                                  {it}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        <input
+                          value={i.description}
+                          onChange={(e) => updateItem(i.id, 'description', e.target.value)}
+                          onBlur={(e) => {
+                            const v = e.target.value.trim();
+                            const inferred = DESCRIPTION_TO_TYPE[v];
+                            if (inferred) updateItem(i.id, 'benefitType', inferred);
+                          }}
+                          className="flex-1 text-sm bg-transparent focus:outline-none"
+                          placeholder="Custom description (optional)"
+                        />
+                      </div>
                     </td>
                     <td className="px-3 py-2 text-right">
                       <input
