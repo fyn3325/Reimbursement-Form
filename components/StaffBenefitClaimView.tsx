@@ -268,6 +268,21 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, [field]: value } : i)));
   };
 
+  const updateRemarks = (id: string, remarks: string) => {
+    const match = /from mileage claim\s+([0-9]{6}\/[0-9]{3})/i.exec(remarks || '');
+    const mileageClaimNumber = match ? match[1] : undefined;
+    setItems((prev) =>
+      prev.map((i) => {
+        if (i.id !== id) return i;
+        return {
+          ...i,
+          remarks,
+          sourceMileageClaimNumber: mileageClaimNumber || i.sourceMileageClaimNumber,
+        };
+      })
+    );
+  };
+
   const setDescriptionAndAutoType = (id: string, description: string) => {
     const inferred = DESCRIPTION_TO_TYPE[description];
     const defaultAmount = DESCRIPTION_TO_DEFAULT_AMOUNT[description];
@@ -798,21 +813,28 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                       </div>
                     </td>
                     <td className="px-3 py-2">
-                      <input value={i.remarks || ''} onChange={(e) => updateItem(i.id, 'remarks', e.target.value)} className="w-full text-sm bg-transparent focus:outline-none" placeholder="—" />
-                      {(i.sourceMileageClaimNumber || '').trim() && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const n = String(i.sourceMileageClaimNumber || '').trim();
-                            if (!n) return;
-                            onOpenMileageClaimNumber?.(n);
-                          }}
-                          className="mt-1 text-xs text-pink-700 hover:text-pink-800 underline"
-                          title="Open mileage claim"
-                        >
-                          Open mileage {i.sourceMileageClaimNumber}
-                        </button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={i.remarks || ''}
+                          onChange={(e) => updateRemarks(i.id, e.target.value)}
+                          className="flex-1 w-full text-sm bg-transparent focus:outline-none"
+                          placeholder="—"
+                        />
+                        {(() => {
+                          const n = String(i.sourceMileageClaimNumber || '').trim();
+                          if (!n) return null;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => onOpenMileageClaimNumber?.(n)}
+                              className="text-xs text-pink-700 hover:text-pink-800 underline whitespace-nowrap"
+                              title="Open mileage claim"
+                            >
+                              Mileage {n}
+                            </button>
+                          );
+                        })()}
+                      </div>
                     </td>
                     <td className="px-3 py-2 text-center no-print">
                       <button onClick={() => removeItem(i.id)} className="text-gray-300 hover:text-red-500" title="Remove item">
