@@ -118,6 +118,7 @@ export interface StaffBenefitClaimViewProps {
   openClaimId?: string | null;
   onOpenClaimConsumed?: () => void;
   onSaved?: (claim: StaffBenefitClaim) => void;
+  onOpenMileageClaimNumber?: (claimNumber: string) => void;
   onPrefillApplied?: () => void;
   tabToReimbursement?: () => void;
 }
@@ -127,6 +128,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
   openClaimId,
   onOpenClaimConsumed,
   onSaved,
+  onOpenMileageClaimNumber,
   onPrefillApplied,
 }) => {
   const [history, setHistory] = useState<StaffBenefitClaim[]>([]);
@@ -224,6 +226,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
           currency: prefillFromMileage.currency,
           receiptRef: prefillFromMileage.sourceMileageClaimNumber,
           remarks: `From mileage claim ${prefillFromMileage.sourceMileageClaimNumber}`,
+          sourceMileageClaimNumber: prefillFromMileage.sourceMileageClaimNumber,
         };
         if (firstEmpty) {
           next[0] = { ...first, ...payload, id: first.id };
@@ -796,6 +799,20 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                     </td>
                     <td className="px-3 py-2">
                       <input value={i.remarks || ''} onChange={(e) => updateItem(i.id, 'remarks', e.target.value)} className="w-full text-sm bg-transparent focus:outline-none" placeholder="—" />
+                      {(i.sourceMileageClaimNumber || '').trim() && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const n = String(i.sourceMileageClaimNumber || '').trim();
+                            if (!n) return;
+                            onOpenMileageClaimNumber?.(n);
+                          }}
+                          className="mt-1 text-xs text-pink-700 hover:text-pink-800 underline"
+                          title="Open mileage claim"
+                        >
+                          Open mileage {i.sourceMileageClaimNumber}
+                        </button>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-center no-print">
                       <button onClick={() => removeItem(i.id)} className="text-gray-300 hover:text-red-500" title="Remove item">

@@ -21,6 +21,7 @@ const ClaimsHub: React.FC = () => {
   } | null>(null);
   const [benefitHistory, setBenefitHistory] = useState<StaffBenefitClaim[]>([]);
   const [openBenefitId, setOpenBenefitId] = useState<string | null>(null);
+  const [openMileageNumber, setOpenMileageNumber] = useState<string | null>(null);
 
   useEffect(() => {
     if (isFirebaseConfigured()) {
@@ -90,6 +91,10 @@ const ClaimsHub: React.FC = () => {
           onPrefillApplied={() => setBenefitPrefill(null)}
           openClaimId={openBenefitId}
           onOpenClaimConsumed={() => setOpenBenefitId(null)}
+          onOpenMileageClaimNumber={(n) => {
+            setOpenMileageNumber(n);
+            setTab('mileage');
+          }}
           onSaved={(claim) => {
             setBenefitHistory((prev) => {
               const exists = prev.some((c) => c.id === claim.id);
@@ -105,6 +110,8 @@ const ClaimsHub: React.FC = () => {
             setBenefitPrefill(payload);
             setTab('benefit');
           }}
+          openClaimNumber={openMileageNumber}
+          onOpenClaimConsumed={() => setOpenMileageNumber(null)}
         />
       )}
     </div>

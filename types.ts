@@ -87,6 +87,7 @@ export interface BenefitClaimItem {
   receiptRef?: string;
   receiptFileUrl?: string;
   receiptFileName?: string;
+  sourceMileageClaimNumber?: string;
   remarks?: string;
 }
 

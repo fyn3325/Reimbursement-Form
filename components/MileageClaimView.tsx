@@ -94,9 +94,15 @@ export interface MileageClaimViewProps {
     currency: string;
     sourceMileageClaimNumber: string;
   }) => void;
+  openClaimNumber?: string | null;
+  onOpenClaimConsumed?: () => void;
 }
 
-const MileageClaimView: React.FC<MileageClaimViewProps> = ({ onSendToBenefit }) => {
+const MileageClaimView: React.FC<MileageClaimViewProps> = ({
+  onSendToBenefit,
+  openClaimNumber,
+  onOpenClaimConsumed,
+}) => {
   const [history, setHistory] = useState<MileageClaim[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [claimNumber, setClaimNumber] = useState<string>('');
@@ -241,6 +247,15 @@ const MileageClaimView: React.FC<MileageClaimViewProps> = ({ onSendToBenefit }) 
     setRows(claim.rows?.length ? claim.rows : [createEmptyRow()]);
     setCurrency(claim.currency || 'MYR');
   };
+
+  useEffect(() => {
+    if (!openClaimNumber) return;
+    const target = history.find((h) => h.claimNumber === openClaimNumber);
+    if (!target) return;
+    loadClaim(target);
+    onOpenClaimConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history, openClaimNumber]);
 
   const deleteClaim = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();

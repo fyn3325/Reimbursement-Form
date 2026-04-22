@@ -726,84 +726,85 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
           {(!history || history.length === 0) && (
              <div className="p-6 text-center text-gray-400 text-sm">No History</div>
           )}
-          {(history || []).map(claim => {
-            const claimItems = claim.items || [];
-            const employee = claim.employee || {};
-            return (
-            <div 
-              key={claim.id}
-              onClick={() => loadClaim(claim)}
-              className={`p-4 border-b border-gray-100 cursor-pointer transition-colors group relative ${
-                currentId === claim.id ? 'bg-pink-50 border-l-4 border-l-pink-600' : 'hover:bg-gray-50 border-l-4 border-l-transparent'
-              }`}
-            >
-              <div className="flex justify-between items-start mb-1">
-                <span className="text-xs font-bold text-gray-700">{claim.claimNumber}</span>
-                <span className="text-[10px] text-gray-400">{claim.updatedAt ? new Date(claim.updatedAt).toLocaleDateString() : ''}</span>
-              </div>
-              <div className="text-sm font-medium text-gray-900 truncate mb-1">
-                {employee.name || 'Unnamed'}
-              </div>
-              <div className="flex justify-between items-end">
-                <span className="text-xs text-gray-500">{claimItems.length} items</span>
-                <span className="text-xs font-bold text-pink-600">
-                  {claimItems.reduce((s, i) => s + (Number(i?.amount)||0), 0).toFixed(2)}
-                </span>
-              </div>
-              <div className="absolute right-2 top-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button 
-                  onClick={(e) => { e.stopPropagation(); loadClaim(claim); }}
-                  className="p-1 text-gray-400 hover:text-pink-500 bg-white rounded-md shadow-sm border border-gray-200"
-                  title="Amend / Edit"
-                >
-                  <Pencil className="w-3 h-3" />
-                </button>
-                <button 
-                  onClick={(e) => deleteClaim(e, claim.id)}
-                  className="p-1 text-gray-400 hover:text-red-500 bg-white rounded-md shadow-sm border border-gray-200"
-                  title="Delete"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-          );
-          })}
+          {(() => {
+            const parseSeq = (n: string): number | null => {
+              const m = /^R(\d{2})(\d{2})\/(\d{3})$/.exec(n || '');
+              if (!m) return null;
+              return parseInt(`${m[1]}${m[2]}${m[3]}`, 10);
+            };
 
-          {benefitHistory.length > 0 && (
-            <div className="border-t border-gray-200">
-              <div className="px-4 py-2 text-[11px] font-bold text-gray-500 uppercase bg-gray-50">
-                Staff Benefit
-              </div>
-              {benefitHistory.map((claim) => {
-                const claimItems = claim.items || [];
-                const employee = claim.employee || ({} as any);
-                const total = claimItems.reduce((s: number, i: any) => s + (Number(i?.amount) || 0), 0);
-                return (
-                  <div
-                    key={claim.id}
-                    onClick={() => onOpenBenefitClaim?.(claim.id)}
-                    className="p-4 border-b border-gray-100 cursor-pointer transition-colors hover:bg-gray-50 border-l-4 border-l-transparent"
-                    title={onOpenBenefitClaim ? 'Open Staff Benefit claim' : undefined}
-                  >
-                    <div className="flex justify-between items-start mb-1">
-                      <span className="text-xs font-bold text-gray-700">{claim.claimNumber}</span>
-                      <span className="text-[10px] text-gray-400">
-                        {claim.updatedAt ? new Date(claim.updatedAt).toLocaleDateString() : ''}
-                      </span>
+            const reimbEntries = (history || []).map((claim) => ({
+              kind: 'reimbursement' as const,
+              id: claim.id,
+              claimNumber: claim.claimNumber,
+              updatedAt: claim.updatedAt ?? 0,
+              employeeName: claim.employee?.name || 'Unnamed',
+              itemsCount: (claim.items || []).length,
+              total: (claim.items || []).reduce((s, i) => s + (Number(i?.amount) || 0), 0),
+              seq: parseSeq(claim.claimNumber) ?? -1,
+            }));
+            const benefitEntries = (benefitHistory || []).map((claim) => ({
+              kind: 'benefit' as const,
+              id: claim.id,
+              claimNumber: claim.claimNumber,
+              updatedAt: claim.updatedAt ?? 0,
+              employeeName: claim.employee?.name || 'Unnamed',
+              itemsCount: (claim.items || []).length,
+              total: (claim.items || []).reduce((s, i) => s + (Number(i?.amount) || 0), 0),
+              seq: parseSeq(claim.claimNumber) ?? -1,
+            }));
+
+            const combined = [...reimbEntries, ...benefitEntries].sort((a, b) => {
+              if (a.seq !== -1 && b.seq !== -1) return b.seq - a.seq; // latest number on top
+              if (a.seq !== -1) return -1;
+              if (b.seq !== -1) return 1;
+              return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+            });
+
+            return combined.map((entry) => {
+              const active = currentId === entry.id && entry.kind === 'reimbursement';
+              const onClick = () => {
+                if (entry.kind === 'reimbursement') {
+                  const c = (history || []).find((h) => h.id === entry.id);
+                  if (c) loadClaim(c);
+                  return;
+                }
+                onOpenBenefitClaim?.(entry.id);
+              };
+
+              return (
+                <div
+                  key={`${entry.kind}-${entry.id}`}
+                  onClick={onClick}
+                  className={`p-4 border-b border-gray-100 cursor-pointer transition-colors group relative ${
+                    active ? 'bg-pink-50 border-l-4 border-l-pink-600' : 'hover:bg-gray-50 border-l-4 border-l-transparent'
+                  }`}
+                  title={entry.kind === 'benefit' ? 'Staff Benefit' : undefined}
+                >
+                  <div className="flex justify-between items-start mb-1 gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-xs font-bold text-gray-700">{entry.claimNumber}</span>
+                      {entry.kind === 'benefit' && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-bold shrink-0">
+                          Staff Benefit
+                        </span>
+                      )}
                     </div>
-                    <div className="text-sm font-medium text-gray-900 truncate mb-1">
-                      {employee.name || 'Unnamed'}
-                    </div>
-                    <div className="flex justify-between items-end">
-                      <span className="text-xs text-gray-500">{claimItems.length} items</span>
-                      <span className="text-xs font-bold text-purple-600">{total.toFixed(2)}</span>
-                    </div>
+                    <span className="text-[10px] text-gray-400">
+                      {entry.updatedAt ? new Date(entry.updatedAt).toLocaleDateString() : ''}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  <div className="text-sm font-medium text-gray-900 truncate mb-1">{entry.employeeName}</div>
+                  <div className="flex justify-between items-end">
+                    <span className="text-xs text-gray-500">{entry.itemsCount} items</span>
+                    <span className={`text-xs font-bold ${entry.kind === 'benefit' ? 'text-purple-600' : 'text-pink-600'}`}>
+                      {entry.total.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              );
+            });
+          })()}
         </div>
       </div>
   );
