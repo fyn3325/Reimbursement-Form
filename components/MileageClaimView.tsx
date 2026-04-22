@@ -13,6 +13,17 @@ function today(): string {
   return new Date().toISOString().split('T')[0];
 }
 
+function ddmmyy(dateStr: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!m) {
+    const t = today();
+    const m2 = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+    if (!m2) return '000000';
+    return `${m2[3]}${m2[2]}${m2[1].slice(-2)}`;
+  }
+  return `${m[3]}${m[2]}${m[1].slice(-2)}`;
+}
+
 function createEmptyEmployee(): EmployeeInfo {
   return {
     name: '',
@@ -59,7 +70,16 @@ function downloadTextFile(filename: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
-const MileageClaimView: React.FC = () => {
+export interface MileageClaimViewProps {
+  onSendToBenefit?: (payload: {
+    employee: EmployeeInfo;
+    amount: number;
+    currency: string;
+    sourceMileageClaimNumber: string;
+  }) => void;
+}
+
+const MileageClaimView: React.FC<MileageClaimViewProps> = ({ onSendToBenefit }) => {
   const [history, setHistory] = useState<MileageClaim[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [claimNumber, setClaimNumber] = useState<string>('');
@@ -75,27 +95,35 @@ const MileageClaimView: React.FC = () => {
 
   const totalAmount = useMemo(() => rows.reduce((s, r) => s + calcRowAmount(r), 0), [rows]);
 
-  const generateClaimNumber = useCallback((claims: MileageClaim[]) => {
-    const date = today().replaceAll('-', '');
-    const countForToday = claims.filter((c) => (c?.claimNumber || '').includes(date)).length + 1;
-    return `MC-${date}-${String(countForToday).padStart(3, '0')}`;
+  const generateClaimNumber = useCallback((claims: MileageClaim[], claimDate: string) => {
+    const prefix = ddmmyy(claimDate);
+    let maxSeq = 0;
+    for (const c of claims) {
+      const n = c?.claimNumber || '';
+      if (!n.startsWith(prefix)) continue;
+      const tail = n.slice(prefix.length);
+      const seq = parseInt(tail, 10);
+      if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
+    }
+    return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
   }, []);
 
   const generateNewClaim = useCallback((overrideHistory?: MileageClaim[]) => {
     const hist = overrideHistory ?? history;
     setCurrentId(null);
-    setEmployee(createEmptyEmployee());
+    const emp = createEmptyEmployee();
+    setEmployee(emp);
     setRows([createEmptyRow()]);
     setCurrency('MYR');
     setIsManualEmployee(false);
-    setClaimNumber(generateClaimNumber(hist));
+    setClaimNumber(generateClaimNumber(hist, emp.claimDate));
   }, [generateClaimNumber, history]);
 
   useEffect(() => {
     if (isFirebaseConfigured()) {
       const unsub = firebaseDb.subscribeToMileageClaims((claims) => {
         setHistory(claims);
-        if (!claimNumber) setClaimNumber(generateClaimNumber(claims));
+        if (!claimNumber) setClaimNumber(generateClaimNumber(claims, employee.claimDate));
       });
       return () => unsub();
     }
@@ -103,12 +131,17 @@ const MileageClaimView: React.FC = () => {
       const saved = localStorage.getItem(MILEAGE_HISTORY_KEY);
       const loaded: MileageClaim[] = saved ? JSON.parse(saved) : [];
       setHistory(Array.isArray(loaded) ? loaded : []);
-      if (!claimNumber) setClaimNumber(generateClaimNumber(Array.isArray(loaded) ? loaded : []));
+      if (!claimNumber) setClaimNumber(generateClaimNumber(Array.isArray(loaded) ? loaded : [], employee.claimDate));
     } catch {
       setHistory([]);
-      if (!claimNumber) setClaimNumber(generateClaimNumber([]));
+      if (!claimNumber) setClaimNumber(generateClaimNumber([], employee.claimDate));
     }
-  }, [claimNumber, generateClaimNumber]);
+  }, [claimNumber, employee.claimDate, generateClaimNumber]);
+
+  useEffect(() => {
+    if (currentId) return;
+    setClaimNumber(generateClaimNumber(history, employee.claimDate));
+  }, [currentId, employee.claimDate, generateClaimNumber, history]);
 
   const handleEmployeeChange = (value: string) => {
     if (value === ADD_NEW_EMPLOYEE) {
@@ -332,6 +365,26 @@ const MileageClaimView: React.FC = () => {
             >
               {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               {isSaving ? 'Saving...' : 'Save'}
+            </button>
+            <button
+              onClick={() => {
+                if (!onSendToBenefit) return;
+                if (totalAmount <= 0) {
+                  alert('Total amount is 0. Please enter KM first.');
+                  return;
+                }
+                onSendToBenefit({
+                  employee,
+                  amount: totalAmount,
+                  currency,
+                  sourceMileageClaimNumber: claimNumber,
+                });
+              }}
+              disabled={!onSendToBenefit}
+              className="flex items-center gap-2 px-3 py-2 bg-pink-600 text-white rounded-lg hover:bg-pink-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Send total to Staff Benefit form"
+            >
+              To Benefit
             </button>
             <button
               onClick={exportCSV}

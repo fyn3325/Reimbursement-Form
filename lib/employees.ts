@@ -44,3 +44,7 @@ export function loadEmployees(): EmployeeRecord[] {
   return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+export function resetEmployeeOverrides(): void {
+  localStorage.removeItem(DEFAULT_EMPLOYEES_KEY);
+  localStorage.removeItem(CUSTOM_EMPLOYEES_KEY);
+}

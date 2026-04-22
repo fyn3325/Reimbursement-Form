@@ -23,6 +23,17 @@ function today(): string {
   return new Date().toISOString().split('T')[0];
 }
 
+function yymmFromDate(dateStr: string): { yy: string; mm: string } {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!m) {
+    const t = today();
+    const m2 = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+    if (!m2) return { yy: '00', mm: '00' };
+    return { yy: m2[1].slice(-2), mm: m2[2] };
+  }
+  return { yy: m[1].slice(-2), mm: m[2] };
+}
+
 function createEmptyEmployee(): EmployeeInfo {
   return {
     name: '',
@@ -64,8 +75,23 @@ function downloadTextFile(filename: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
-const StaffBenefitClaimView: React.FC = () => {
+export interface StaffBenefitClaimViewProps {
+  prefillFromMileage?: {
+    employee: EmployeeInfo;
+    amount: number;
+    currency: string;
+    sourceMileageClaimNumber: string;
+  } | null;
+  onPrefillApplied?: () => void;
+  tabToReimbursement?: () => void;
+}
+
+const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
+  prefillFromMileage,
+  onPrefillApplied,
+}) => {
   const [history, setHistory] = useState<StaffBenefitClaim[]>([]);
+  const [reimbursementHistoryNumbers, setReimbursementHistoryNumbers] = useState<string[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [claimNumber, setClaimNumber] = useState<string>('');
   const [employee, setEmployee] = useState<EmployeeInfo>(() => createEmptyEmployee());
@@ -80,39 +106,103 @@ const StaffBenefitClaimView: React.FC = () => {
 
   const totalAmount = useMemo(() => items.reduce((s, i) => s + numberOrZero(i.amount), 0), [items]);
 
-  const generateClaimNumber = useCallback((claims: StaffBenefitClaim[]) => {
-    const date = today().replaceAll('-', '');
-    const countForToday = claims.filter((c) => (c?.claimNumber || '').includes(date)).length + 1;
-    return `SB-${date}-${String(countForToday).padStart(3, '0')}`;
+  const generateClaimNumber = useCallback((benefitClaims: StaffBenefitClaim[], reimbursementNumbers: string[], claimDate: string) => {
+    const { yy, mm } = yymmFromDate(claimDate);
+    const prefix = `R${yy}${mm}/`;
+    let maxSeq = 0;
+    const allNumbers = [
+      ...reimbursementNumbers,
+      ...benefitClaims.map((c) => c?.claimNumber || ''),
+    ];
+    for (const n of allNumbers) {
+      if (!n.startsWith(prefix)) continue;
+      const parts = n.split('/');
+      if (parts.length !== 2) continue;
+      const seq = parseInt(parts[1], 10);
+      if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
+    }
+    const nextSeq = String(maxSeq + 1).padStart(3, '0');
+    return `${prefix}${nextSeq}`;
   }, []);
 
   const generateNewClaim = useCallback((overrideHistory?: StaffBenefitClaim[]) => {
     const hist = overrideHistory ?? history;
     setCurrentId(null);
-    setEmployee(createEmptyEmployee());
+    const emp = createEmptyEmployee();
+    setEmployee(emp);
     setItems([createEmptyItem()]);
     setIsManualEmployee(false);
-    setClaimNumber(generateClaimNumber(hist));
-  }, [generateClaimNumber, history]);
+    setClaimNumber(generateClaimNumber(hist, reimbursementHistoryNumbers, emp.claimDate));
+  }, [generateClaimNumber, history, reimbursementHistoryNumbers]);
 
   useEffect(() => {
     if (isFirebaseConfigured()) {
-      const unsub = firebaseDb.subscribeToBenefitClaims((claims) => {
+      const unsubBenefit = firebaseDb.subscribeToBenefitClaims((claims) => {
         setHistory(claims);
-        if (!claimNumber) setClaimNumber(generateClaimNumber(claims));
       });
-      return () => unsub();
+      const unsubReimb = firebaseDb.subscribeToClaims((claims) => {
+        const nums = (claims || []).map((c) => c?.claimNumber || '').filter(Boolean);
+        setReimbursementHistoryNumbers(nums);
+      });
+      return () => {
+        unsubBenefit();
+        unsubReimb();
+      };
     }
     try {
       const saved = localStorage.getItem(BENEFIT_HISTORY_KEY);
       const loaded: StaffBenefitClaim[] = saved ? JSON.parse(saved) : [];
       setHistory(Array.isArray(loaded) ? loaded : []);
-      if (!claimNumber) setClaimNumber(generateClaimNumber(Array.isArray(loaded) ? loaded : []));
+      const reimbSaved = localStorage.getItem('auditlink_claims_history');
+      const reimbLoaded = reimbSaved ? JSON.parse(reimbSaved) : [];
+      const reimbNums = Array.isArray(reimbLoaded) ? reimbLoaded.map((c: any) => c?.claimNumber || '').filter(Boolean) : [];
+      setReimbursementHistoryNumbers(reimbNums);
     } catch {
       setHistory([]);
-      if (!claimNumber) setClaimNumber(generateClaimNumber([]));
+      setReimbursementHistoryNumbers([]);
     }
-  }, [claimNumber, generateClaimNumber]);
+  }, []);
+
+  useEffect(() => {
+    if (currentId) return;
+    setClaimNumber(generateClaimNumber(history, reimbursementHistoryNumbers, employee.claimDate));
+  }, [currentId, employee.claimDate, generateClaimNumber, history, reimbursementHistoryNumbers]);
+
+  useEffect(() => {
+    if (!prefillFromMileage) return;
+    const apply = () => {
+      setEmployee(prefillFromMileage.employee);
+      setItems((prev) => {
+        const next = [...prev];
+        const first = next[0];
+        const firstEmpty = first && !String(first.description || '').trim() && !String(first.amount || '').trim();
+        const payload: BenefitClaimItem = {
+          id: crypto.randomUUID(),
+          date: prefillFromMileage.employee.claimDate || today(),
+          benefitType: 'Mileage',
+          description: `Mileage claim ${prefillFromMileage.sourceMileageClaimNumber}`,
+          amount: prefillFromMileage.amount,
+          currency: prefillFromMileage.currency,
+          receiptRef: '',
+          remarks: '',
+        };
+        if (firstEmpty) {
+          next[0] = { ...first, ...payload, id: first.id };
+          return next;
+        }
+        return [...next, payload];
+      });
+      onPrefillApplied?.();
+    };
+
+    const dirty =
+      (employee.name && employee.name !== prefillFromMileage.employee.name) ||
+      items.some((i) => String(i.description || '').trim() || String(i.amount || '').trim());
+    if (dirty) {
+      if (!confirm('Apply mileage total to this Staff Benefit claim? This will set employee info and add an item.')) return;
+    }
+    apply();
+  }, [employee.name, items, onPrefillApplied, prefillFromMileage]);
 
   const handleEmployeeChange = (value: string) => {
     if (value === ADD_NEW_EMPLOYEE) {
