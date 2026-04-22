@@ -4,6 +4,7 @@ import type { BenefitClaimItem, EmployeeInfo, StaffBenefitClaim } from '../types
 import { isFirebaseConfigured } from '../lib/firebase';
 import * as firebaseDb from '../lib/firebase-db';
 import { loadEmployees } from '../lib/employees';
+import { uploadBenefitReceiptFile } from '../lib/firebase-storage';
 
 const BENEFIT_HISTORY_KEY = 'auditlink_benefit_claims_history';
 
@@ -34,6 +35,12 @@ const DESCRIPTION_TO_TYPE: Record<string, string> = {
   Specialist: 'Medical',
   Dental: 'Medical',
   Meetings: 'Entertainment',
+};
+
+const DESCRIPTION_TO_DEFAULT_AMOUNT: Record<string, number> = {
+  'Meals (Breakfast)': 10,
+  'Meals (Lunch)': 15,
+  'Meals (Dinner)': 15,
 };
 
 const DESCRIPTION_GROUPS: Array<{ type: string; items: string[] }> = [
@@ -210,7 +217,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
           amount: prefillFromMileage.amount,
           currency: prefillFromMileage.currency,
           receiptRef: prefillFromMileage.sourceMileageClaimNumber,
-          remarks: '',
+          remarks: `From mileage claim ${prefillFromMileage.sourceMileageClaimNumber}`,
         };
         if (firstEmpty) {
           next[0] = { ...first, ...payload, id: first.id };
@@ -254,10 +261,16 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
 
   const setDescriptionAndAutoType = (id: string, description: string) => {
     const inferred = DESCRIPTION_TO_TYPE[description];
+    const defaultAmount = DESCRIPTION_TO_DEFAULT_AMOUNT[description];
     setItems((prev) =>
       prev.map((i) => {
         if (i.id !== id) return i;
-        return { ...i, description, benefitType: inferred || i.benefitType };
+        const next: BenefitClaimItem = { ...i, description, benefitType: inferred || i.benefitType };
+        if (defaultAmount != null) {
+          next.amount = defaultAmount;
+          next.currency = 'MYR';
+        }
+        return next;
       })
     );
   };
@@ -266,11 +279,31 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
     const timestamp = Date.now();
     const savedId = currentId ?? crypto.randomUUID();
     setIsSaving(true);
+
+    let itemsToSave = [...items];
+    if (isFirebaseConfigured()) {
+      try {
+        for (let i = 0; i < itemsToSave.length; i++) {
+          const item = itemsToSave[i];
+          const dataUrl = item.receiptFileUrl;
+          if (dataUrl && dataUrl.startsWith('data:')) {
+            const url = await uploadBenefitReceiptFile(savedId, item.id, dataUrl);
+            itemsToSave[i] = { ...item, receiptFileUrl: url };
+          }
+        }
+      } catch (err) {
+        console.error('Upload benefit receipt failed', err);
+        alert('Failed to upload receipt files. Please try again.');
+        setIsSaving(false);
+        return;
+      }
+    }
+
     const claimToSave: StaffBenefitClaim = {
       id: savedId,
       claimNumber,
       employee,
-      items,
+      items: itemsToSave,
       updatedAt: timestamp,
     };
 
@@ -613,7 +646,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                   <th className="px-3 py-2">Description</th>
                   <th className="px-3 py-2 w-28 text-right">Amount</th>
                   <th className="px-3 py-2 w-24">Currency</th>
-                  <th className="px-3 py-2 w-40">Receipt Ref</th>
+                  <th className="px-3 py-2 w-40">Receipt</th>
                   <th className="px-3 py-2 w-40">Remarks</th>
                   <th className="px-3 py-2 w-12 no-print"></th>
                 </tr>
@@ -696,7 +729,53 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                       </select>
                     </td>
                     <td className="px-3 py-2">
-                      <input value={i.receiptRef || ''} onChange={(e) => updateItem(i.id, 'receiptRef', e.target.value)} className="w-full text-sm bg-transparent focus:outline-none" placeholder="Receipt / invoice no." />
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          const url =
+                            i.receiptFileUrl ||
+                            (typeof i.receiptRef === 'string' && i.receiptRef.startsWith('http') ? i.receiptRef : '');
+                          if (!url) return <span className="text-xs text-gray-400">—</span>;
+                          const isImage = url.startsWith('data:image') || /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url);
+                          return (
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block w-14 h-14 rounded border border-gray-200 overflow-hidden hover:ring-2 hover:ring-pink-500"
+                              title={i.receiptFileName || 'View receipt'}
+                            >
+                              {isImage ? (
+                                <img src={url} alt="Receipt" className="w-full h-full object-cover" />
+                              ) : (
+                                <div className="w-full h-full bg-gray-100 flex items-center justify-center text-xs text-gray-500">
+                                  PDF
+                                </div>
+                              )}
+                            </a>
+                          );
+                        })()}
+                        <label className="text-xs bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-2.5 py-1.5 rounded-md inline-flex items-center gap-1 cursor-pointer">
+                          Upload
+                          <input
+                            type="file"
+                            accept="image/*,.pdf,application/pdf"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = '';
+                              if (!file) return;
+                              const reader = new FileReader();
+                              reader.onload = () => {
+                                const dataUrl = String(reader.result || '');
+                                if (!dataUrl.startsWith('data:')) return;
+                                updateItem(i.id, 'receiptFileUrl', dataUrl);
+                                updateItem(i.id, 'receiptFileName', file.name);
+                              };
+                              reader.readAsDataURL(file);
+                            }}
+                          />
+                        </label>
+                      </div>
                     </td>
                     <td className="px-3 py-2">
                       <input value={i.remarks || ''} onChange={(e) => updateItem(i.id, 'remarks', e.target.value)} className="w-full text-sm bg-transparent focus:outline-none" placeholder="—" />

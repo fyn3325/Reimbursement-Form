@@ -85,6 +85,8 @@ export interface BenefitClaimItem {
   amount: number | string;
   currency?: string;
   receiptRef?: string;
+  receiptFileUrl?: string;
+  receiptFileName?: string;
   remarks?: string;
 }
 
