@@ -1,0 +1,5 @@
+{
+  "name": "REIMBURSEMENT FORM",
+  "description": "Smart reimbursement form tool. Upload credit card statements (image or text), extract transactions, categorize business/personal expenses, and generate compliant reports.",
+  "requestFramePermissions": []
+}
