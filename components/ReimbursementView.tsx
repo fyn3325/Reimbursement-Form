@@ -409,14 +409,19 @@ const ReimbursementView: React.FC = () => {
     setShowHistoryDrawer(false);
     setCurrentId(claim.id);
     setClaimNumber(claim.claimNumber);
-    const emp = claim.employee || {};
+    const emp: Partial<EmployeeInfo> = claim.employee || {};
     setEmployee({
-      ...emp,
+      name: emp.name || '',
       branch: emp.branch || (emp as any).department || '',
+      bankAccount: emp.bankAccount || '',
       bankName: emp.bankName || '',
-      chargeTo: emp.chargeTo || 'GAIAS SDN BHD'
+      chargeTo: emp.chargeTo || 'GAIAS SDN BHD',
+      claimDate: emp.claimDate || new Date().toISOString().split('T')[0],
     });
-    setIsManualEmployee(!defaultEmployees.some(e => e.name === emp.name) && !customEmployees.some(e => e.name === emp.name));
+    setIsManualEmployee(
+      !defaultEmployees.some(e => e.name === (emp.name || '')) &&
+      !customEmployees.some(e => e.name === (emp.name || ''))
+    );
     setItems(claim.items || []);
   };
 

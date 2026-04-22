@@ -8,9 +8,11 @@ import {
   DataSnapshot,
 } from 'firebase/database';
 import { getFirebaseDatabase } from './firebase';
-import type { ReimbursementClaim } from '../types';
+import type { MileageClaim, ReimbursementClaim, StaffBenefitClaim } from '../types';
 
 const CLAIMS_PATH = 'claims';
+const MILEAGE_CLAIMS_PATH = 'mileageClaims';
+const BENEFIT_CLAIMS_PATH = 'benefitClaims';
 
 function claimsRef() {
   return ref(getFirebaseDatabase(), CLAIMS_PATH);
@@ -61,6 +63,82 @@ export function subscribeToClaims(callback: (claims: ReimbursementClaim[]) => vo
     const list: ReimbursementClaim[] = [];
     snapshot.forEach((child) => {
       const c = parseClaimFromSnapshot(child);
+      if (c) list.push(c);
+    });
+    callback(list.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)));
+  });
+}
+
+function mileageClaimsRef() {
+  return ref(getFirebaseDatabase(), MILEAGE_CLAIMS_PATH);
+}
+
+function mileageClaimRef(id: string) {
+  return ref(getFirebaseDatabase(), `${MILEAGE_CLAIMS_PATH}/${id}`);
+}
+
+function parseMileageClaimFromSnapshot(snapshot: DataSnapshot): MileageClaim | null {
+  const val = snapshot.val();
+  if (!val) return null;
+  return { ...val, id: snapshot.key } as MileageClaim;
+}
+
+export async function saveMileageClaim(claim: MileageClaim): Promise<void> {
+  const { id, ...rest } = claim;
+  await set(mileageClaimRef(id), rest);
+}
+
+export async function deleteMileageClaim(id: string): Promise<void> {
+  await remove(mileageClaimRef(id));
+}
+
+export function subscribeToMileageClaims(callback: (claims: MileageClaim[]) => void): Unsubscribe {
+  return onValue(mileageClaimsRef(), (snapshot) => {
+    if (!snapshot.exists()) {
+      callback([]);
+      return;
+    }
+    const list: MileageClaim[] = [];
+    snapshot.forEach((child) => {
+      const c = parseMileageClaimFromSnapshot(child);
+      if (c) list.push(c);
+    });
+    callback(list.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)));
+  });
+}
+
+function benefitClaimsRef() {
+  return ref(getFirebaseDatabase(), BENEFIT_CLAIMS_PATH);
+}
+
+function benefitClaimRef(id: string) {
+  return ref(getFirebaseDatabase(), `${BENEFIT_CLAIMS_PATH}/${id}`);
+}
+
+function parseBenefitClaimFromSnapshot(snapshot: DataSnapshot): StaffBenefitClaim | null {
+  const val = snapshot.val();
+  if (!val) return null;
+  return { ...val, id: snapshot.key } as StaffBenefitClaim;
+}
+
+export async function saveBenefitClaim(claim: StaffBenefitClaim): Promise<void> {
+  const { id, ...rest } = claim;
+  await set(benefitClaimRef(id), rest);
+}
+
+export async function deleteBenefitClaim(id: string): Promise<void> {
+  await remove(benefitClaimRef(id));
+}
+
+export function subscribeToBenefitClaims(callback: (claims: StaffBenefitClaim[]) => void): Unsubscribe {
+  return onValue(benefitClaimsRef(), (snapshot) => {
+    if (!snapshot.exists()) {
+      callback([]);
+      return;
+    }
+    const list: StaffBenefitClaim[] = [];
+    snapshot.forEach((child) => {
+      const c = parseBenefitClaimFromSnapshot(child);
       if (c) list.push(c);
     });
     callback(list.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)));

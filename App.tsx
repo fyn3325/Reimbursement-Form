@@ -1,5 +1,5 @@
 import React from 'react';
-import ReimbursementView from './components/ReimbursementView';
+import ClaimsHub from './components/ClaimsHub';
 import { ShieldCheck } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -24,7 +24,7 @@ const App: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-[1600px] mx-auto w-full p-4 sm:p-6 print:p-0 print:max-w-none">
-          <ReimbursementView />
+          <ClaimsHub />
       </main>
     </div>
   );
