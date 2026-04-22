@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Save, Loader2, Trash2, Plus, History, PanelLeft, Pencil, Printer, FileSpreadsheet } from 'lucide-react';
-import { EMPLOYEES_LIST } from '../constants';
 import type { EmployeeInfo, MileageClaim, MileageClaimRow } from '../types';
 import { isFirebaseConfigured } from '../lib/firebase';
 import * as firebaseDb from '../lib/firebase-db';
+import { loadEmployees } from '../lib/employees';
 
 const MILEAGE_HISTORY_KEY = 'auditlink_mileage_claims_history';
 
@@ -33,7 +33,6 @@ function createEmptyRow(): MileageClaimRow {
     purpose: '',
     distanceKm: '',
     rate: 0.6,
-    remarks: '',
   };
 }
 
@@ -71,6 +70,8 @@ const MileageClaimView: React.FC = () => {
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const ADD_NEW_EMPLOYEE = '__ADD_NEW__';
   const [isManualEmployee, setIsManualEmployee] = useState(false);
+
+  const allEmployees = loadEmployees();
 
   const totalAmount = useMemo(() => rows.reduce((s, r) => s + calcRowAmount(r), 0), [rows]);
 
@@ -116,7 +117,7 @@ const MileageClaimView: React.FC = () => {
       return;
     }
     setIsManualEmployee(false);
-    const match = EMPLOYEES_LIST.find((e) => e.name === value);
+    const match = allEmployees.find((e) => e.name === value);
     setEmployee((prev) => ({
       ...prev,
       name: value,
@@ -200,18 +201,15 @@ const MileageClaimView: React.FC = () => {
   };
 
   const exportCSV = () => {
-    const header = ['Date', 'From', 'To', 'Purpose', 'StartOdo', 'EndOdo', 'DistanceKm', 'Rate', 'Amount', 'Remarks'];
+    const header = ['Date', 'From', 'To', 'Purpose', 'DistanceKm', 'Rate', 'Amount'];
     const lines = rows.map((r) => [
       r.date,
       `"${(r.from || '').replaceAll('"', '""')}"`,
       `"${(r.to || '').replaceAll('"', '""')}"`,
       `"${(r.purpose || '').replaceAll('"', '""')}"`,
-      r.startOdometer ?? '',
-      r.endOdometer ?? '',
       r.distanceKm ?? '',
       r.rate ?? '',
       calcRowAmount(r).toFixed(2),
-      `"${(r.remarks || '').replaceAll('"', '""')}"`,
     ].join(','));
     const meta = [
       `ClaimNumber,${claimNumber}`,
@@ -376,7 +374,7 @@ const MileageClaimView: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
             <div className="flex flex-col">
               <label className="text-xs font-bold text-gray-500 uppercase">Employee</label>
               <select
@@ -387,7 +385,7 @@ const MileageClaimView: React.FC = () => {
                 <option value="" disabled>
                   Select Employee
                 </option>
-                {EMPLOYEES_LIST.map((emp) => (
+                {allEmployees.map((emp) => (
                   <option key={emp.name} value={emp.name}>
                     {emp.name}
                   </option>
@@ -435,6 +433,25 @@ const MileageClaimView: React.FC = () => {
                 placeholder="Auto-filled"
               />
             </div>
+
+            <div className="flex flex-col">
+              <label className="text-xs font-bold text-gray-500 uppercase">Branch</label>
+              <div className="relative">
+                <select
+                  value={employee.branch}
+                  onChange={(e) => setEmployee({ ...employee, branch: e.target.value })}
+                  className="w-full border-b border-gray-300 py-1 focus:outline-none focus:border-pink-600 font-medium bg-transparent appearance-none"
+                >
+                  <option value="" disabled>
+                    Select Branch
+                  </option>
+                  <option value="HQ">HQ</option>
+                  <option value="PBJ">PBJ</option>
+                  <option value="MVJB">MVJB</option>
+                  <option value="IOI">IOI</option>
+                </select>
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center justify-between gap-3 mb-3">
@@ -466,13 +483,10 @@ const MileageClaimView: React.FC = () => {
                   <th className="px-3 py-2 w-28">Date</th>
                   <th className="px-3 py-2 w-40">From</th>
                   <th className="px-3 py-2 w-40">To</th>
-                  <th className="px-3 py-2">Purpose</th>
-                  <th className="px-3 py-2 w-28">Start Odo</th>
-                  <th className="px-3 py-2 w-28">End Odo</th>
+                  <th className="px-3 py-2 w-[420px]">Purpose</th>
                   <th className="px-3 py-2 w-28 text-right">KM</th>
                   <th className="px-3 py-2 w-24 text-right">Rate</th>
                   <th className="px-3 py-2 w-28 text-right">Amount</th>
-                  <th className="px-3 py-2 w-40">Remarks</th>
                   <th className="px-3 py-2 w-12 no-print"></th>
                 </tr>
               </thead>
@@ -490,12 +504,6 @@ const MileageClaimView: React.FC = () => {
                     </td>
                     <td className="px-3 py-2">
                       <input value={r.purpose} onChange={(e) => updateRow(r.id, 'purpose', e.target.value)} className="w-full text-sm bg-transparent focus:outline-none" placeholder="Meeting / Delivery / Site visit" />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input value={r.startOdometer ?? ''} onChange={(e) => updateRow(r.id, 'startOdometer', e.target.value)} className="w-full text-sm bg-transparent focus:outline-none" placeholder="—" />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input value={r.endOdometer ?? ''} onChange={(e) => updateRow(r.id, 'endOdometer', e.target.value)} className="w-full text-sm bg-transparent focus:outline-none" placeholder="—" />
                     </td>
                     <td className="px-3 py-2 text-right">
                       <input
@@ -521,9 +529,6 @@ const MileageClaimView: React.FC = () => {
                         {calcRowAmount(r).toFixed(2)} <span className="text-xs text-gray-400">{currency}</span>
                       </div>
                     </td>
-                    <td className="px-3 py-2">
-                      <input value={r.remarks || ''} onChange={(e) => updateRow(r.id, 'remarks', e.target.value)} className="w-full text-sm bg-transparent focus:outline-none" placeholder="—" />
-                    </td>
                     <td className="px-3 py-2 text-center no-print">
                       <button onClick={() => removeRow(r.id)} className="text-gray-300 hover:text-red-500" title="Remove row">
                         <Trash2 className="w-4 h-4" />
@@ -534,7 +539,7 @@ const MileageClaimView: React.FC = () => {
               </tbody>
               <tfoot className="bg-gray-50">
                 <tr>
-                  <td colSpan={8} className="px-3 py-3 text-right text-sm font-semibold text-gray-700">
+                  <td colSpan={6} className="px-3 py-3 text-right text-sm font-semibold text-gray-700">
                     Total
                   </td>
                   <td className="px-3 py-3 text-right">
@@ -542,14 +547,14 @@ const MileageClaimView: React.FC = () => {
                       {totalAmount.toFixed(2)} <span className="text-xs text-gray-400">{currency}</span>
                     </div>
                   </td>
-                  <td colSpan={2} />
+                  <td colSpan={1} />
                 </tr>
               </tfoot>
             </table>
           </div>
 
           <div className="mt-6 text-xs text-gray-500">
-            Tip: If you prefer, you can enter only distance and rate; odometer fields are optional.
+            Tip: Enter distance (KM) and rate to calculate the amount automatically.
           </div>
         </div>
       </div>

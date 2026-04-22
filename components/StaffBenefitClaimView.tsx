@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Save, Loader2, Trash2, Plus, History, PanelLeft, Pencil, Printer, FileSpreadsheet } from 'lucide-react';
-import { EMPLOYEES_LIST } from '../constants';
 import type { BenefitClaimItem, EmployeeInfo, StaffBenefitClaim } from '../types';
 import { isFirebaseConfigured } from '../lib/firebase';
 import * as firebaseDb from '../lib/firebase-db';
+import { loadEmployees } from '../lib/employees';
 
 const BENEFIT_HISTORY_KEY = 'auditlink_benefit_claims_history';
 
@@ -76,6 +76,8 @@ const StaffBenefitClaimView: React.FC = () => {
   const [isManualEmployee, setIsManualEmployee] = useState(false);
   const [benefitTypes, setBenefitTypes] = useState<string[]>(() => DEFAULT_BENEFIT_TYPES);
 
+  const allEmployees = loadEmployees();
+
   const totalAmount = useMemo(() => items.reduce((s, i) => s + numberOrZero(i.amount), 0), [items]);
 
   const generateClaimNumber = useCallback((claims: StaffBenefitClaim[]) => {
@@ -119,7 +121,7 @@ const StaffBenefitClaimView: React.FC = () => {
       return;
     }
     setIsManualEmployee(false);
-    const match = EMPLOYEES_LIST.find((e) => e.name === value);
+    const match = allEmployees.find((e) => e.name === value);
     setEmployee((prev) => ({
       ...prev,
       name: value,
@@ -373,7 +375,7 @@ const StaffBenefitClaimView: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
             <div className="flex flex-col">
               <label className="text-xs font-bold text-gray-500 uppercase">Employee</label>
               <select
@@ -384,7 +386,7 @@ const StaffBenefitClaimView: React.FC = () => {
                 <option value="" disabled>
                   Select Employee
                 </option>
-                {EMPLOYEES_LIST.map((emp) => (
+                {allEmployees.map((emp) => (
                   <option key={emp.name} value={emp.name}>
                     {emp.name}
                   </option>
@@ -431,6 +433,25 @@ const StaffBenefitClaimView: React.FC = () => {
                 className="border-b border-gray-300 py-1 focus:outline-none focus:border-pink-600 font-medium bg-gray-50/50"
                 placeholder="Auto-filled"
               />
+            </div>
+
+            <div className="flex flex-col">
+              <label className="text-xs font-bold text-gray-500 uppercase">Branch</label>
+              <div className="relative">
+                <select
+                  value={employee.branch}
+                  onChange={(e) => setEmployee({ ...employee, branch: e.target.value })}
+                  className="w-full border-b border-gray-300 py-1 focus:outline-none focus:border-pink-600 font-medium bg-transparent appearance-none"
+                >
+                  <option value="" disabled>
+                    Select Branch
+                  </option>
+                  <option value="HQ">HQ</option>
+                  <option value="PBJ">PBJ</option>
+                  <option value="MVJB">MVJB</option>
+                  <option value="IOI">IOI</option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -550,4 +571,3 @@ const StaffBenefitClaimView: React.FC = () => {
 };
 
 export default StaffBenefitClaimView;
-
