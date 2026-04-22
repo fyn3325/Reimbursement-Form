@@ -13,15 +13,15 @@ function today(): string {
   return new Date().toISOString().split('T')[0];
 }
 
-function ddmmyy(dateStr: string): string {
+function yymmddPrefix(dateStr: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
   if (!m) {
     const t = today();
     const m2 = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
     if (!m2) return '000000';
-    return `${m2[3]}${m2[2]}${m2[1].slice(-2)}`;
+    return `${m2[1].slice(-2)}${m2[2]}${m2[3]}/`;
   }
-  return `${m[3]}${m[2]}${m[1].slice(-2)}`;
+  return `${m[1].slice(-2)}${m[2]}${m[3]}/`;
 }
 
 function createEmptyEmployee(): EmployeeInfo {
@@ -96,13 +96,14 @@ const MileageClaimView: React.FC<MileageClaimViewProps> = ({ onSendToBenefit }) 
   const totalAmount = useMemo(() => rows.reduce((s, r) => s + calcRowAmount(r), 0), [rows]);
 
   const generateClaimNumber = useCallback((claims: MileageClaim[], claimDate: string) => {
-    const prefix = ddmmyy(claimDate);
+    const prefix = yymmddPrefix(claimDate);
     let maxSeq = 0;
     for (const c of claims) {
       const n = c?.claimNumber || '';
       if (!n.startsWith(prefix)) continue;
-      const tail = n.slice(prefix.length);
-      const seq = parseInt(tail, 10);
+      const parts = n.split('/');
+      if (parts.length !== 2) continue;
+      const seq = parseInt(parts[1], 10);
       if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
     }
     return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
