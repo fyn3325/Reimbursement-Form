@@ -108,6 +108,12 @@ function downloadTextFile(filename: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
+function extractMileageClaimNumber(text: string | undefined | null): string | null {
+  const t = String(text || '');
+  const m = /(\d{6}\/\d{3})/.exec(t);
+  return m ? m[1] : null;
+}
+
 export interface StaffBenefitClaimViewProps {
   prefillFromMileage?: {
     employee: EmployeeInfo;
@@ -269,8 +275,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
   };
 
   const updateRemarks = (id: string, remarks: string) => {
-    const match = /from mileage claim\s+([0-9]{6}\/[0-9]{3})/i.exec(remarks || '');
-    const mileageClaimNumber = match ? match[1] : undefined;
+    const mileageClaimNumber = extractMileageClaimNumber(remarks);
     setItems((prev) =>
       prev.map((i) => {
         if (i.id !== id) return i;
@@ -814,26 +819,29 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2">
-                        <input
-                          value={i.remarks || ''}
-                          onChange={(e) => updateRemarks(i.id, e.target.value)}
-                          className="flex-1 w-full text-sm bg-transparent focus:outline-none"
-                          placeholder="—"
-                        />
                         {(() => {
-                          const n = String(i.sourceMileageClaimNumber || '').trim();
+                          const n =
+                            String(i.sourceMileageClaimNumber || '').trim() ||
+                            extractMileageClaimNumber(i.remarks) ||
+                            extractMileageClaimNumber(i.receiptRef);
                           if (!n) return null;
                           return (
                             <button
                               type="button"
-                              onClick={() => onOpenMileageClaimNumber?.(n)}
-                              className="text-xs text-pink-700 hover:text-pink-800 underline whitespace-nowrap"
+                              onClick={() => onOpenMileageClaimNumber?.(String(n))}
+                              className="text-xs text-pink-700 hover:text-pink-800 underline whitespace-nowrap shrink-0"
                               title="Open mileage claim"
                             >
                               Mileage {n}
                             </button>
                           );
                         })()}
+                        <input
+                          value={i.remarks || ''}
+                          onChange={(e) => updateRemarks(i.id, e.target.value)}
+                          className="flex-1 w-full text-sm bg-transparent focus:outline-none"
+                          placeholder="—"
+                        />
                       </div>
                     </td>
                     <td className="px-3 py-2 text-center no-print">
