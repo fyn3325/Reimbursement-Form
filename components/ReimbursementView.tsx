@@ -310,7 +310,7 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
 
   // --- Logic ---
 
-  const generateClaimNumber = (currentHistory: ReimbursementClaim[]) => {
+  const generateClaimNumber = (currentHistory: ReimbursementClaim[], extraClaimNumbers: string[] = []) => {
     const now = new Date();
     // YYMM format (e.g., 2602 for Feb 2026)
     const yy = now.getFullYear().toString().slice(-2);
@@ -319,16 +319,21 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
     
     // Find max sequence in history for this month
     let maxSeq = 0;
-    currentHistory.forEach(h => {
-        if (h.claimNumber && h.claimNumber.startsWith(prefix)) {
-            const parts = h.claimNumber.split('/');
-            if (parts.length === 2) {
-                const seq = parseInt(parts[1], 10);
-                if (!isNaN(seq) && seq > maxSeq) {
-                    maxSeq = seq;
-                }
-            }
+    const allNumbers = [
+      ...currentHistory.map(h => h?.claimNumber || '').filter(Boolean),
+      ...extraClaimNumbers.filter(Boolean),
+    ];
+
+    allNumbers.forEach(n => {
+      if (n && n.startsWith(prefix)) {
+        const parts = n.split('/');
+        if (parts.length === 2) {
+          const seq = parseInt(parts[1], 10);
+          if (!isNaN(seq) && seq > maxSeq) {
+            maxSeq = seq;
+          }
         }
+      }
     });
 
     const nextSeq = (maxSeq + 1).toString().padStart(3, '0');
@@ -338,7 +343,7 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
   const generateNewClaim = (overrideHistory?: ReimbursementClaim[]) => {
     const hist = overrideHistory || history;
     setCurrentId(null);
-    setClaimNumber(generateClaimNumber(hist));
+    setClaimNumber(generateClaimNumber(hist, benefitHistory.map(b => b.claimNumber)));
     setEmployee({
       name: '',
       branch: '',
@@ -350,6 +355,12 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
     setIsManualEmployee(false);
     setItems([]);
   };
+
+  useEffect(() => {
+    if (currentId) return;
+    // Keep claim number unique across reimbursement + staff benefit.
+    setClaimNumber(generateClaimNumber(history, benefitHistory.map(b => b.claimNumber)));
+  }, [benefitHistory, currentId, history]);
 
   const saveClaim = async () => {
     const timestamp = Date.now();
