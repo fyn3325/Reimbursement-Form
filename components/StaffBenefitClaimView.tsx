@@ -228,10 +228,10 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
           date: prefillFromMileage.employee.claimDate || today(),
           benefitType: 'Traveling',
           description: 'Mileage',
-          amount: prefillFromMileage.amount,
+          amount: Number(prefillFromMileage.amount).toFixed(2),
           currency: prefillFromMileage.currency,
           receiptRef: prefillFromMileage.sourceMileageClaimNumber,
-          remarks: `From mileage claim ${prefillFromMileage.sourceMileageClaimNumber}`,
+          remarks: '',
           sourceMileageClaimNumber: prefillFromMileage.sourceMileageClaimNumber,
         };
         if (firstEmpty) {
@@ -687,7 +687,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                   <th className="px-3 py-2 w-28 text-right">Amount</th>
                   <th className="px-3 py-2 w-24">Currency</th>
                   <th className="px-3 py-2 w-40">Receipt</th>
-                  <th className="px-3 py-2 w-40">Remarks</th>
+                  <th className="px-3 py-2 w-64">Remarks</th>
                   <th className="px-3 py-2 w-12 no-print"></th>
                 </tr>
               </thead>
@@ -750,6 +750,13 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                         type="number"
                         value={i.amount}
                         onChange={(e) => updateItem(i.id, 'amount', e.target.value)}
+                        onBlur={(e) => {
+                          const v = e.target.value;
+                          if (v == null || v === '') return;
+                          const n = Number(v);
+                          if (!Number.isFinite(n)) return;
+                          updateItem(i.id, 'amount', n.toFixed(2));
+                        }}
                         className="w-24 text-right text-sm font-mono font-medium bg-transparent focus:outline-none"
                         placeholder="0.00"
                         step="0.01"
@@ -769,7 +776,10 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                       </select>
                     </td>
                     <td className="px-3 py-2">
-                      <div className="flex items-center gap-2">
+                      <div className="hidden print:block text-xs text-gray-700">
+                        {i.receiptFileName || i.receiptRef || ''}
+                      </div>
+                      <div className="flex items-center gap-2 no-print">
                         {(() => {
                           const url =
                             i.receiptFileUrl ||
@@ -818,7 +828,14 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                       </div>
                     </td>
                     <td className="px-3 py-2">
-                      <div className="flex items-center gap-2">
+                      {/* Print-friendly remarks */}
+                      <div className="hidden print:block text-xs text-gray-700">
+                        {String(i.sourceMileageClaimNumber || '').trim()
+                          ? `Mileage ${i.sourceMileageClaimNumber}`
+                          : (i.remarks || '')}
+                      </div>
+
+                      <div className="flex items-center gap-2 no-print">
                         {(() => {
                           const n =
                             String(i.sourceMileageClaimNumber || '').trim() ||

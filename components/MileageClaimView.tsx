@@ -418,7 +418,7 @@ const MileageClaimView: React.FC<MileageClaimViewProps> = ({
                 }
                 onSendToBenefit({
                   employee,
-                  amount: totalAmount,
+                  amount: Number(totalAmount.toFixed(2)),
                   currency,
                   sourceMileageClaimNumber: claimNumber,
                 });
