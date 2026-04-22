@@ -1,5 +1,6 @@
 // Models
-export const GEMINI_MODEL = 'gemini-2.0-flash'; 
+// NOTE: `gemini-2.0-flash` may be unavailable for some/new API projects.
+export const GEMINI_MODEL = 'gemini-2.5-flash-lite';
 
 export const SAMPLE_STATEMENT_TEXT = `Date,Description,Amount
 2023-10-01,Uber Trip,24.50
