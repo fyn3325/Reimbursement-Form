@@ -70,6 +70,23 @@ function downloadTextFile(filename: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
+function formatFirebaseError(err: unknown): string {
+  const anyErr = err as any;
+  const code = typeof anyErr?.code === 'string' ? anyErr.code : '';
+  const message = typeof anyErr?.message === 'string' ? anyErr.message : String(err);
+
+  if (code.toLowerCase().includes('permission') || message.toLowerCase().includes('permission')) {
+    return 'Firebase permission denied. Please update Realtime Database Rules to allow read/write for `mileageClaims`.';
+  }
+  if (code.toLowerCase().includes('network') || message.toLowerCase().includes('network')) {
+    return 'Network error while saving to Firebase. Please retry.';
+  }
+  if (message.toLowerCase().includes('unsupported type') || message.toLowerCase().includes('undefined')) {
+    return 'Invalid data (undefined) detected while saving. Please retry; if it persists, tell me what you entered.';
+  }
+  return message;
+}
+
 export interface MileageClaimViewProps {
   onSendToBenefit?: (payload: {
     employee: EmployeeInfo;
@@ -181,12 +198,22 @@ const MileageClaimView: React.FC<MileageClaimViewProps> = ({ onSendToBenefit }) 
 
     if (isFirebaseConfigured()) {
       try {
-        await firebaseDb.saveMileageClaim(claimToSave);
+        // Strip undefined values (RTDB rejects them).
+        const cleaned = JSON.parse(JSON.stringify(claimToSave)) as MileageClaim;
+        await firebaseDb.saveMileageClaim(cleaned);
         setCurrentId(savedId);
         alert('Mileage Claim Saved/Amended Successfully');
       } catch (err) {
         console.error('Save mileage claim failed', err);
-        alert('Failed to save. Please try again.');
+        // Fallback to local save so user doesn't lose work.
+        try {
+          const newHistory = currentId
+            ? history.map((h) => (h.id === currentId ? claimToSave : h))
+            : [claimToSave, ...history];
+          setHistory(newHistory);
+          localStorage.setItem(MILEAGE_HISTORY_KEY, JSON.stringify(newHistory));
+        } catch {}
+        alert(`Failed to save to Firebase. Saved locally in this browser.\n\n${formatFirebaseError(err)}`);
       } finally {
         setIsSaving(false);
       }
