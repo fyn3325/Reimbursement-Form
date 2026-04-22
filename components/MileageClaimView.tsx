@@ -32,7 +32,7 @@ function createEmptyRow(): MileageClaimRow {
     to: '',
     purpose: '',
     distanceKm: '',
-    rate: 0.7,
+    rate: 0.6,
     remarks: '',
   };
 }
