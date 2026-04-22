@@ -3,7 +3,7 @@ import { defineSecret } from "firebase-functions/params";
 import { GoogleGenAI, Type } from "@google/genai";
 
 const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
-const GEMINI_MODEL = "gemini-2.0-flash";
+const GEMINI_MODEL = "gemini-2.5-flash-lite";
 
 const RECEIPTS_ARRAY_SCHEMA = {
   type: Type.OBJECT,

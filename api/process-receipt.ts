@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from '@google/genai';
+import { GEMINI_MODEL } from '../constants';
 
 const json = (body: object, status: number) =>
   new Response(JSON.stringify(body), {
@@ -56,7 +57,7 @@ async function processReceipt(base64Image: string, mimeType: string, apiKey: str
   const ai = new GoogleGenAI({ apiKey });
   const mime = normalizeMime(mimeType);
   const response = await ai.models.generateContent({
-    model: 'gemini-2.0-flash',
+    model: GEMINI_MODEL,
     contents: {
       parts: [
         { inlineData: { data: base64Image, mimeType: mime } },
