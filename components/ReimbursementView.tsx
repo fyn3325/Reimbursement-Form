@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
-import { ClaimItem, EmployeeInfo, ReimbursementClaim } from '../types';
+import { ClaimItem, EmployeeInfo, ReimbursementClaim, StaffBenefitClaim } from '../types';
 import { isFirebaseConfigured } from '../lib/firebase';
 import * as firebaseDb from '../lib/firebase-db';
 import { uploadReceiptImage } from '../lib/firebase-storage';
@@ -213,7 +213,12 @@ const SortableRow = memo<SortableRowProps>(function SortableRow(
   );
 });
 
-const ReimbursementView: React.FC = () => {
+export interface ReimbursementViewProps {
+  benefitHistory?: StaffBenefitClaim[];
+  onOpenBenefitClaim?: (id: string) => void;
+}
+
+const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = [], onOpenBenefitClaim }) => {
   // --- State ---
   const [history, setHistory] = useState<ReimbursementClaim[]>([]);
   
@@ -764,6 +769,41 @@ const ReimbursementView: React.FC = () => {
             </div>
           );
           })}
+
+          {benefitHistory.length > 0 && (
+            <div className="border-t border-gray-200">
+              <div className="px-4 py-2 text-[11px] font-bold text-gray-500 uppercase bg-gray-50">
+                Staff Benefit
+              </div>
+              {benefitHistory.map((claim) => {
+                const claimItems = claim.items || [];
+                const employee = claim.employee || ({} as any);
+                const total = claimItems.reduce((s: number, i: any) => s + (Number(i?.amount) || 0), 0);
+                return (
+                  <div
+                    key={claim.id}
+                    onClick={() => onOpenBenefitClaim?.(claim.id)}
+                    className="p-4 border-b border-gray-100 cursor-pointer transition-colors hover:bg-gray-50 border-l-4 border-l-transparent"
+                    title={onOpenBenefitClaim ? 'Open Staff Benefit claim' : undefined}
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="text-xs font-bold text-gray-700">{claim.claimNumber}</span>
+                      <span className="text-[10px] text-gray-400">
+                        {claim.updatedAt ? new Date(claim.updatedAt).toLocaleDateString() : ''}
+                      </span>
+                    </div>
+                    <div className="text-sm font-medium text-gray-900 truncate mb-1">
+                      {employee.name || 'Unnamed'}
+                    </div>
+                    <div className="flex justify-between items-end">
+                      <span className="text-xs text-gray-500">{claimItems.length} items</span>
+                      <span className="text-xs font-bold text-purple-600">{total.toFixed(2)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
   );

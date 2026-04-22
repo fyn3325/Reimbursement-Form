@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ClipboardList, Car, HeartHandshake, RefreshCcw } from 'lucide-react';
 import ReimbursementView from './ReimbursementView';
 import MileageClaimView from './MileageClaimView';
 import StaffBenefitClaimView from './StaffBenefitClaimView';
 import type { EmployeeInfo } from '../types';
 import { resetEmployeeOverrides } from '../lib/employees';
+import type { StaffBenefitClaim } from '../types';
+import { isFirebaseConfigured } from '../lib/firebase';
+import * as firebaseDb from '../lib/firebase-db';
 
 type ClaimsTab = 'reimbursement' | 'mileage' | 'benefit';
 
@@ -16,6 +19,22 @@ const ClaimsHub: React.FC = () => {
     currency: string;
     sourceMileageClaimNumber: string;
   } | null>(null);
+  const [benefitHistory, setBenefitHistory] = useState<StaffBenefitClaim[]>([]);
+  const [openBenefitId, setOpenBenefitId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isFirebaseConfigured()) {
+      const unsub = firebaseDb.subscribeToBenefitClaims((claims) => setBenefitHistory(claims));
+      return () => unsub();
+    }
+    try {
+      const saved = localStorage.getItem('auditlink_benefit_claims_history');
+      const loaded = saved ? JSON.parse(saved) : [];
+      setBenefitHistory(Array.isArray(loaded) ? loaded : []);
+    } catch {
+      setBenefitHistory([]);
+    }
+  }, []);
 
   const tabs: Array<{ id: ClaimsTab; label: string; Icon: React.ComponentType<any> }> = [
     { id: 'reimbursement', label: 'Reimbursement', Icon: ClipboardList },
@@ -56,11 +75,27 @@ const ClaimsHub: React.FC = () => {
         </button>
       </div>
 
-      {tab === 'reimbursement' && <ReimbursementView />}
+      {tab === 'reimbursement' && (
+        <ReimbursementView
+          benefitHistory={benefitHistory}
+          onOpenBenefitClaim={(id) => {
+            setOpenBenefitId(id);
+            setTab('benefit');
+          }}
+        />
+      )}
       {tab === 'benefit' && (
         <StaffBenefitClaimView
           prefillFromMileage={benefitPrefill}
           onPrefillApplied={() => setBenefitPrefill(null)}
+          openClaimId={openBenefitId}
+          onOpenClaimConsumed={() => setOpenBenefitId(null)}
+          onSaved={(claim) => {
+            setBenefitHistory((prev) => {
+              const exists = prev.some((c) => c.id === claim.id);
+              return exists ? prev.map((c) => (c.id === claim.id ? claim : c)) : [claim, ...prev];
+            });
+          }}
           tabToReimbursement={() => setTab('reimbursement')}
         />
       )}

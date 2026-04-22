@@ -115,12 +115,18 @@ export interface StaffBenefitClaimViewProps {
     currency: string;
     sourceMileageClaimNumber: string;
   } | null;
+  openClaimId?: string | null;
+  onOpenClaimConsumed?: () => void;
+  onSaved?: (claim: StaffBenefitClaim) => void;
   onPrefillApplied?: () => void;
   tabToReimbursement?: () => void;
 }
 
 const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
   prefillFromMileage,
+  openClaimId,
+  onOpenClaimConsumed,
+  onSaved,
   onPrefillApplied,
 }) => {
   const [history, setHistory] = useState<StaffBenefitClaim[]>([]);
@@ -311,6 +317,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
       try {
         await firebaseDb.saveBenefitClaim(claimToSave);
         setCurrentId(savedId);
+        onSaved?.(claimToSave);
         alert('Staff Benefit Claim Saved/Amended Successfully');
       } catch (err) {
         console.error('Save benefit claim failed', err);
@@ -328,6 +335,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
     setCurrentId(savedId);
     localStorage.setItem(BENEFIT_HISTORY_KEY, JSON.stringify(newHistory));
     setIsSaving(false);
+    onSaved?.(claimToSave);
     alert('Staff Benefit Claim Saved/Amended Successfully');
   };
 
@@ -341,6 +349,15 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
     setEmployee(claim.employee || createEmptyEmployee());
     setItems(claim.items?.length ? claim.items : [createEmptyItem()]);
   };
+
+  useEffect(() => {
+    if (!openClaimId) return;
+    const target = history.find((h) => h.id === openClaimId);
+    if (!target) return;
+    loadClaim(target);
+    onOpenClaimConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history, openClaimId]);
 
   const deleteClaim = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -362,14 +379,14 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
   };
 
   const exportCSV = () => {
-    const header = ['Date', 'BenefitType', 'Description', 'Amount', 'Currency', 'ReceiptRef', 'Remarks'];
+    const header = ['Date', 'TypeOfClaim', 'Description', 'Amount', 'Currency', 'Receipt', 'Remarks'];
     const lines = items.map((i) => [
       i.date,
       `"${(i.benefitType || '').replaceAll('"', '""')}"`,
       `"${(i.description || '').replaceAll('"', '""')}"`,
       numberOrZero(i.amount).toFixed(2),
       i.currency || 'MYR',
-      `"${(i.receiptRef || '').replaceAll('"', '""')}"`,
+      `"${(i.receiptFileUrl || i.receiptRef || '').replaceAll('"', '""')}"`,
       `"${(i.remarks || '').replaceAll('"', '""')}"`,
     ].join(','));
     const meta = [
