@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Save, Loader2, Trash2, Plus, History, PanelLeft, Pencil, Printer, FileSpreadsheet } from 'lucide-react';
+import { Save, Loader2, Trash2, Plus, History, PanelLeft, Pencil, Printer, FileSpreadsheet, X } from 'lucide-react';
 import type { BenefitClaimItem, EmployeeInfo, StaffBenefitClaim } from '../types';
 import { isFirebaseConfigured } from '../lib/firebase';
 import * as firebaseDb from '../lib/firebase-db';
@@ -145,6 +145,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
   const [items, setItems] = useState<BenefitClaimItem[]>(() => [createEmptyItem()]);
   const [isSaving, setIsSaving] = useState(false);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+  const [viewer, setViewer] = useState<{ url: string; title: string } | null>(null);
   const ADD_NEW_EMPLOYEE = '__ADD_NEW__';
   const [isManualEmployee, setIsManualEmployee] = useState(false);
   const [benefitTypes, setBenefitTypes] = useState<string[]>(() => DEFAULT_BENEFIT_TYPES);
@@ -494,6 +495,47 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
 
   return (
     <div className="flex flex-col md:flex-row md:items-start gap-4 md:gap-6">
+      {viewer && (
+        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4 no-print">
+          <div className="bg-white w-full max-w-5xl h-[85vh] rounded-xl shadow-xl border border-gray-200 overflow-hidden flex flex-col">
+            <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold text-gray-800 truncate">{viewer.title}</div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={viewer.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-gray-600 hover:text-gray-800 underline"
+                >
+                  Open in new tab
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setViewer(null)}
+                  className="p-2 -m-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+                  aria-label="Close"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 bg-gray-50">
+              {viewer.url.startsWith('data:image') || /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(viewer.url) ? (
+                <div className="w-full h-full overflow-auto p-4 flex items-center justify-center">
+                  <img src={viewer.url} alt="Receipt" className="max-w-full max-h-full object-contain bg-white rounded border border-gray-200" />
+                </div>
+              ) : (
+                <object data={viewer.url} type="application/pdf" className="w-full h-full">
+                  <div className="p-6 text-sm text-gray-700">
+                    Unable to preview this PDF. Use “Open in new tab”.
+                  </div>
+                </object>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      
       {showHistoryDrawer && (
         <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setShowHistoryDrawer(false)} aria-hidden="true" />
       )}
@@ -787,10 +829,9 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                           if (!url) return <span className="text-xs text-gray-400">—</span>;
                           const isImage = url.startsWith('data:image') || /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url);
                           return (
-                            <a
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <button
+                              type="button"
+                              onClick={() => setViewer({ url, title: i.receiptFileName || 'Receipt' })}
                               className="block w-14 h-14 rounded border border-gray-200 overflow-hidden hover:ring-2 hover:ring-pink-500"
                               title={i.receiptFileName || 'View receipt'}
                             >
@@ -801,7 +842,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                                   PDF
                                 </div>
                               )}
-                            </a>
+                            </button>
                           );
                         })()}
                         <label className="text-xs bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-2.5 py-1.5 rounded-md inline-flex items-center gap-1 cursor-pointer">
