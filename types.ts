@@ -98,3 +98,13 @@ export interface StaffBenefitClaim {
   items: BenefitClaimItem[];
   updatedAt?: number;
 }
+
+export interface MedicalLegacyEntry {
+  id: string;
+  employeeName: string;
+  date: string; // YYYY-MM-DD
+  clinicName?: string;
+  totalAmount?: number;
+  claimedAmount: number;
+  createdAt?: number;
+}

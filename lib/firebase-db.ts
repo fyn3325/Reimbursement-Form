@@ -8,11 +8,12 @@ import {
   DataSnapshot,
 } from 'firebase/database';
 import { getFirebaseDatabase } from './firebase';
-import type { MileageClaim, ReimbursementClaim, StaffBenefitClaim } from '../types';
+import type { MedicalLegacyEntry, MileageClaim, ReimbursementClaim, StaffBenefitClaim } from '../types';
 
 const CLAIMS_PATH = 'claims';
 const MILEAGE_CLAIMS_PATH = 'mileageClaims';
 const BENEFIT_CLAIMS_PATH = 'benefitClaims';
+const MEDICAL_LEGACY_PATH = 'medicalLegacy';
 
 function claimsRef() {
   return ref(getFirebaseDatabase(), CLAIMS_PATH);
@@ -142,5 +143,43 @@ export function subscribeToBenefitClaims(callback: (claims: StaffBenefitClaim[])
       if (c) list.push(c);
     });
     callback(list.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)));
+  });
+}
+
+function medicalLegacyRef() {
+  return ref(getFirebaseDatabase(), MEDICAL_LEGACY_PATH);
+}
+
+function medicalLegacyEntryRef(id: string) {
+  return ref(getFirebaseDatabase(), `${MEDICAL_LEGACY_PATH}/${id}`);
+}
+
+function parseMedicalLegacyEntryFromSnapshot(snapshot: DataSnapshot): MedicalLegacyEntry | null {
+  const val = snapshot.val();
+  if (!val) return null;
+  return { ...val, id: snapshot.key } as MedicalLegacyEntry;
+}
+
+export async function saveMedicalLegacyEntry(entry: MedicalLegacyEntry): Promise<void> {
+  const { id, ...rest } = entry;
+  await set(medicalLegacyEntryRef(id), rest);
+}
+
+export async function deleteMedicalLegacyEntry(id: string): Promise<void> {
+  await remove(medicalLegacyEntryRef(id));
+}
+
+export function subscribeToMedicalLegacy(callback: (entries: MedicalLegacyEntry[]) => void): Unsubscribe {
+  return onValue(medicalLegacyRef(), (snapshot) => {
+    if (!snapshot.exists()) {
+      callback([]);
+      return;
+    }
+    const list: MedicalLegacyEntry[] = [];
+    snapshot.forEach((child) => {
+      const e = parseMedicalLegacyEntryFromSnapshot(child);
+      if (e) list.push(e);
+    });
+    callback(list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)));
   });
 }

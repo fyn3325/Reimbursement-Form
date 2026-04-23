@@ -1,7 +1,17 @@
-import React, { useMemo, useState } from 'react';
-import type { StaffBenefitClaim } from '../types';
-import { createEmptyMedicalUsageSummary, computeMedicalUsage, listBenefitClaimYears, MEDICAL_ITEM_MAX, MEDICAL_YEARLY_QUOTA } from '../lib/quota';
+import React, { useEffect, useMemo, useState } from 'react';
+import type { MedicalLegacyEntry, StaffBenefitClaim } from '../types';
+import {
+  createEmptyMedicalUsageSummary,
+  computeMedicalUsage,
+  extractMedicalLedgerEntries,
+  listBenefitClaimYears,
+  MEDICAL_ITEM_MAX,
+  MEDICAL_YEARLY_QUOTA,
+  parseLegacyMedicalEntriesFromText,
+} from '../lib/quota';
 import { loadEmployees } from '../lib/employees';
+import { isFirebaseConfigured } from '../lib/firebase';
+import * as firebaseDb from '../lib/firebase-db';
 
 type MedicalQuotaViewProps = {
   benefitHistory: StaffBenefitClaim[];
@@ -11,14 +21,34 @@ function formatMoney(n: number): string {
   return `RM${(Number.isFinite(n) ? n : 0).toFixed(2)}`;
 }
 
+const LEGACY_KEY = 'auditlink_medical_legacy_entries';
+
 const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) => {
   const years = useMemo(() => listBenefitClaimYears(benefitHistory), [benefitHistory]);
   const [year, setYear] = useState<number>(() => years[0] ?? new Date().getFullYear());
   const [query, setQuery] = useState('');
   const [openEmployee, setOpenEmployee] = useState<string | null>(null);
+  const [mode, setMode] = useState<'summary' | 'ledger'>('summary');
+  const [legacy, setLegacy] = useState<MedicalLegacyEntry[]>([]);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState('');
 
   const medicalUsageMap = useMemo(() => computeMedicalUsage(benefitHistory, { year }), [benefitHistory, year]);
   const employees = loadEmployees();
+
+  useEffect(() => {
+    if (isFirebaseConfigured()) {
+      const unsub = firebaseDb.subscribeToMedicalLegacy((entries) => setLegacy(entries));
+      return () => unsub();
+    }
+    try {
+      const saved = localStorage.getItem(LEGACY_KEY);
+      const loaded = saved ? JSON.parse(saved) : [];
+      setLegacy(Array.isArray(loaded) ? loaded : []);
+    } catch {
+      setLegacy([]);
+    }
+  }, []);
 
   const rows = useMemo(() => {
     const names = new Set<string>();
@@ -38,9 +68,100 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
 
     return list.map((employeeName) => {
       const key = `${employeeName}::${year}`;
-      return medicalUsageMap.get(key) || createEmptyMedicalUsageSummary(employeeName, year);
+      const base = medicalUsageMap.get(key) || createEmptyMedicalUsageSummary(employeeName, year);
+      const extra = legacy
+        .filter((e) => (e.employeeName || '').trim() === employeeName)
+        .filter((e) => String(e.date || '').startsWith(String(year)));
+      if (!extra.length) return base;
+      const add = extra.reduce((s, e) => s + (Number.isFinite(e.claimedAmount) ? e.claimedAmount : 0), 0);
+      const used = base.used + add;
+      const legacyLast = extra
+        .map((e) => String(e.date || '').trim())
+        .filter(Boolean)
+        .sort()
+        .at(-1);
+      return {
+        ...base,
+        used,
+        remaining: Math.max(0, MEDICAL_YEARLY_QUOTA - used),
+        lastUsedDate: legacyLast && (!base.lastUsedDate || legacyLast > base.lastUsedDate) ? legacyLast : base.lastUsedDate,
+      };
     });
-  }, [employees, medicalUsageMap, query, year]);
+  }, [employees, legacy, medicalUsageMap, query, year]);
+
+  const ledgerEntries = useMemo(() => extractMedicalLedgerEntries(benefitHistory, legacy, { year }), [benefitHistory, legacy, year]);
+  const ledgerSections = useMemo(() => {
+    const usedByEmployee = new Map<string, number>();
+    const computed = ledgerEntries.map((e) => {
+      const prev = usedByEmployee.get(e.employeeName) || 0;
+      const nextUsed = prev + e.claimedAmount;
+      usedByEmployee.set(e.employeeName, nextUsed);
+      const balance = Math.max(0, MEDICAL_YEARLY_QUOTA - nextUsed);
+      return { ...e, balance };
+    });
+
+    const groups = new Map<string, Array<(typeof computed)[number]>>();
+    for (const e of computed) {
+      const m = (e.date || '').slice(0, 7); // YYYY-MM
+      if (!m) continue;
+      const arr = groups.get(m) || [];
+      arr.push(e);
+      groups.set(m, arr);
+    }
+    const months = Array.from(groups.keys()).sort((a, b) => a.localeCompare(b));
+    return months.map((month) => {
+      const list = groups.get(month) || [];
+      const total = list.reduce((s, e) => s + e.claimedAmount, 0);
+      return { month, total, list };
+    });
+  }, [ledgerEntries]);
+
+  const monthLabel = (yyyymm: string) => {
+    const m = /^(\d{4})-(\d{2})$/.exec(yyyymm);
+    if (!m) return yyyymm;
+    const idx = Number(m[2]);
+    const names = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
+    const name = names[idx - 1] || m[2];
+    return `${name} ${m[1]}`;
+  };
+
+  const importPreview = useMemo(() => parseLegacyMedicalEntriesFromText(importText), [importText]);
+
+  const addLegacyEntries = async () => {
+    const parsed = parseLegacyMedicalEntriesFromText(importText);
+    if (!parsed.length) {
+      alert('No valid rows found. Please paste rows with Date, Staff Name, Clinic Name, Total Amount, Claimed Amount.');
+      return;
+    }
+    const existingKey = new Set(legacy.map((e) => `${e.employeeName}::${e.date}::${e.claimedAmount}::${e.clinicName || ''}`));
+    const toAdd: MedicalLegacyEntry[] = [];
+    for (const p of parsed) {
+      const k = `${p.employeeName}::${p.date}::${p.claimedAmount}::${p.clinicName || ''}`;
+      if (existingKey.has(k)) continue;
+      toAdd.push({ id: crypto.randomUUID(), ...p });
+    }
+    if (!toAdd.length) {
+      alert('All pasted rows already exist.');
+      return;
+    }
+
+    if (isFirebaseConfigured()) {
+      try {
+        for (const e of toAdd) await firebaseDb.saveMedicalLegacyEntry(e);
+      } catch (err) {
+        console.error('Save medical legacy failed', err);
+        alert('Failed to save to Firebase. Please check RTDB rules for "medicalLegacy".');
+        return;
+      }
+    } else {
+      const next = [...toAdd, ...legacy];
+      setLegacy(next);
+      localStorage.setItem(LEGACY_KEY, JSON.stringify(next));
+    }
+    setImportText('');
+    setImportOpen(false);
+    alert(`Imported ${toAdd.length} rows.`);
+  };
 
   const totals = useMemo(() => {
     let used = 0;
@@ -50,6 +171,40 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
 
   return (
     <div className="space-y-4">
+      {importOpen && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setImportOpen(false)} aria-hidden="true" />
+          <div className="absolute left-1/2 top-1/2 w-[92vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl shadow-xl border border-[#e2d3a8] overflow-hidden">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="font-bold text-gray-900">Import past Medical records</div>
+              <button className="text-sm font-semibold text-gray-600 hover:text-gray-900" onClick={() => setImportOpen(false)}>
+                Close
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="text-xs text-gray-600">
+                Paste rows copied from your spreadsheet. Expected columns: Date, Staff Name, Clinic Name, Total Amount, Claimed Amount.
+              </div>
+              <textarea
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                className="w-full h-40 border border-gray-300 rounded-lg p-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-pink-500"
+                placeholder="Paste here…"
+              />
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-gray-600">Preview rows detected: <span className="font-mono font-semibold">{importPreview.length}</span></div>
+                <button
+                  className="px-3 py-2 rounded-lg bg-pink-600 text-white font-semibold text-sm hover:bg-pink-700"
+                  onClick={addLegacyEntries}
+                >
+                  Import
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-[var(--brand-accent-soft)] border border-[#e2d3a8] rounded-xl shadow-sm p-4 no-print">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -59,6 +214,30 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              className="text-sm font-semibold text-pink-700 hover:text-pink-800 px-2 py-2"
+              title="Import past records"
+            >
+              Import
+            </button>
+            <div className="flex items-center rounded-lg border border-[#e2d3a8] bg-white/70 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setMode('summary')}
+                className={`px-3 py-2 text-sm font-semibold ${mode === 'summary' ? 'bg-[#f3ead6]' : 'hover:bg-[#fbf7ef]'}`}
+              >
+                Summary
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('ledger')}
+                className={`px-3 py-2 text-sm font-semibold ${mode === 'ledger' ? 'bg-[#f3ead6]' : 'hover:bg-[#fbf7ef]'}`}
+              >
+                Listing
+              </button>
+            </div>
             <label className="text-xs font-bold text-gray-500 uppercase">Year</label>
             <select
               value={year}
@@ -85,6 +264,62 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
         </div>
       </div>
 
+      {mode === 'ledger' && (
+        <div className="bg-white border border-[#e2d3a8] rounded-xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-left border-collapse">
+              <thead className="bg-[#f3ead6]">
+                <tr className="text-xs font-bold text-gray-600 uppercase">
+                  <th className="px-4 py-3 w-16">No</th>
+                  <th className="px-4 py-3 w-32">Date</th>
+                  <th className="px-4 py-3 w-56">Staff Name</th>
+                  <th className="px-4 py-3">Clinic Name</th>
+                  <th className="px-4 py-3 w-36 text-right">Total Amount</th>
+                  <th className="px-4 py-3 w-40 text-right">Claimed Amount</th>
+                  <th className="px-4 py-3 w-40 text-right">Quota Balance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {ledgerSections.map((g) => (
+                  <React.Fragment key={g.month}>
+                    <tr className="bg-[#f7f0df]">
+                      <td className="px-4 py-2 font-bold text-gray-800" colSpan={4}>
+                        TOTAL {monthLabel(g.month)}
+                      </td>
+                      <td className="px-4 py-2" />
+                      <td className="px-4 py-2 text-right font-mono font-bold text-gray-900">{formatMoney(g.total)}</td>
+                      <td className="px-4 py-2" />
+                    </tr>
+                    {g.list
+                      .filter((e) => (!query.trim() ? true : e.employeeName.toLowerCase().includes(query.trim().toLowerCase())))
+                      .map((e, idx) => (
+                        <tr key={e.id} className="hover:bg-[#fbf7ef]">
+                          <td className="px-4 py-2 font-mono text-gray-800">{idx + 1}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">{e.date}</td>
+                          <td className="px-4 py-2 text-sm font-semibold text-gray-900">{e.employeeName}</td>
+                          <td className="px-4 py-2 text-sm text-gray-700">
+                            {e.clinicName}
+                            {e.source === 'benefit' && e.claimNumber ? (
+                              <span className="ml-2 text-[11px] font-mono text-gray-500">({e.claimNumber})</span>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-2 text-right font-mono text-gray-800">{e.totalAmount != null ? formatMoney(e.totalAmount) : '—'}</td>
+                          <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">{formatMoney(e.claimedAmount)}</td>
+                          <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">{formatMoney(e.balance)}</td>
+                        </tr>
+                      ))}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-4 py-3 text-xs text-gray-600 border-t border-gray-100">
+            Annual quota: <span className="font-mono font-semibold">RM{MEDICAL_YEARLY_QUOTA.toFixed(0)}</span> · Max per receipt: <span className="font-mono font-semibold">RM{MEDICAL_ITEM_MAX.toFixed(0)}</span>
+          </div>
+        </div>
+      )}
+
+      {mode !== 'ledger' && (
       <div className="bg-white border border-[#e2d3a8] rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-left border-collapse">
@@ -158,6 +393,7 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 };
