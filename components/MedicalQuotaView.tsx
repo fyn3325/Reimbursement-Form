@@ -185,6 +185,25 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
               <div className="text-xs text-gray-600">
                 Paste rows copied from your spreadsheet. Expected columns: Date, Staff Name, Clinic Name, Total Amount, Claimed Amount.
               </div>
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-xs font-semibold text-gray-700 inline-flex items-center gap-2 cursor-pointer">
+                  <span className="px-2.5 py-1.5 rounded-md bg-white border border-gray-300 hover:bg-gray-50">Upload CSV/TSV</span>
+                  <input
+                    type="file"
+                    accept=".csv,.tsv,.txt,text/csv,text/plain"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = () => setImportText(String(reader.result || ''));
+                      reader.readAsText(file);
+                    }}
+                  />
+                </label>
+                <div className="text-[11px] text-gray-500">Copy/paste also works.</div>
+              </div>
               <textarea
                 value={importText}
                 onChange={(e) => setImportText(e.target.value)}
