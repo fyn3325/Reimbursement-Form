@@ -50,7 +50,10 @@ async function processReceiptViaApi(base64Image: string, mimeType: string): Prom
     if (res.status === 413) {
       throw new Error(FILE_TOO_LARGE_MESSAGE);
     }
-    const data = await res.json().catch(() => ({}));
+    const data = await res.json().catch(async () => {
+      const text = await res.text().catch(() => '');
+      return { details: text };
+    });
     throw new Error(data.details || data.error || `Request failed: ${res.status}`);
   }
   const data = await res.json();

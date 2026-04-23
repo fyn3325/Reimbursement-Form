@@ -1,5 +1,4 @@
 import { GoogleGenAI, Type } from '@google/genai';
-import { GEMINI_MODEL } from '../constants';
 
 const json = (body: object, status: number) =>
   new Response(JSON.stringify(body), {
@@ -53,30 +52,72 @@ function normalizeMime(mime: string): string {
   return mime;
 }
 
+function getModelCandidates(): string[] {
+  const fromEnv = (process.env.GEMINI_MODEL || '').trim();
+  const candidates = [
+    fromEnv,
+    // Prefer newest first; keep fallbacks for accounts/projects with different availability.
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-1.5-flash',
+    'gemini-1.5-pro',
+  ].filter(Boolean);
+  return Array.from(new Set(candidates));
+}
+
+function isModelNotFoundError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    msg.includes('not_found') ||
+    msg.includes('not found') ||
+    msg.includes('no longer available') ||
+    msg.includes('model') && msg.includes('is no longer available') ||
+    msg.includes('models/') && msg.includes('not') && msg.includes('available')
+  );
+}
+
 async function processReceipt(base64Image: string, mimeType: string, apiKey: string) {
   const ai = new GoogleGenAI({ apiKey });
   const mime = normalizeMime(mimeType);
-  const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
-    contents: {
-      parts: [
-        { inlineData: { data: base64Image, mimeType: mime } },
-        {
-          text: 'Extract ALL invoices/receipts from this document for a reimbursement claim form. '
-            + 'If the PDF or image contains multiple invoices (e.g. 5 invoices on 5 pages), extract EACH one as a separate item in the receipts array. '
-            + 'Do not skip any invoice. Return empty receipts array only if no invoice/receipt is found.',
+
+  const models = getModelCandidates();
+  let lastErr: unknown;
+  let response: Awaited<ReturnType<typeof ai.models.generateContent>> | null = null;
+
+  for (const model of models) {
+    try {
+      response = await ai.models.generateContent({
+        model,
+        contents: {
+          parts: [
+            { inlineData: { data: base64Image, mimeType: mime } },
+            {
+              text: 'Extract ALL invoices/receipts from this document for a reimbursement claim form. '
+                + 'If the PDF or image contains multiple invoices (e.g. 5 invoices on 5 pages), extract EACH one as a separate item in the receipts array. '
+                + 'Do not skip any invoice. Return empty receipts array only if no invoice/receipt is found.',
+            },
+          ],
         },
-      ],
-    },
-    config: {
-      systemInstruction:
-        'You are a finance assistant. Extract ALL invoices/receipts from the document. '
-        + 'A multi-page PDF may contain one invoice per page - extract every single one. '
-        + 'If language is Chinese, translate description to English or keep it concise. Map category to the closest option available.',
-      responseMimeType: 'application/json',
-      responseSchema: RECEIPTS_ARRAY_SCHEMA,
-    },
-  });
+        config: {
+          systemInstruction:
+            'You are a finance assistant. Extract ALL invoices/receipts from the document. '
+            + 'A multi-page PDF may contain one invoice per page - extract every single one. '
+            + 'If language is Chinese, translate description to English or keep it concise. Map category to the closest option available.',
+          responseMimeType: 'application/json',
+          responseSchema: RECEIPTS_ARRAY_SCHEMA,
+        },
+      });
+      break;
+    } catch (err) {
+      lastErr = err;
+      if (isModelNotFoundError(err)) continue;
+      throw err;
+    }
+  }
+
+  if (!response) {
+    throw lastErr || new Error('No available Gemini model for this API key.');
+  }
 
   const raw = JSON.parse(response.text || '{"receipts":[]}');
   const receipts = Array.isArray(raw.receipts) ? raw.receipts : [];
