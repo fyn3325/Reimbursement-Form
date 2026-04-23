@@ -36,9 +36,8 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
     date: string;
     employeeName: string;
     clinicName: string;
-    totalAmount: string;
     claimedAmount: string;
-  }>({ date: '', employeeName: '', clinicName: '', totalAmount: '', claimedAmount: '' });
+  }>({ date: '', employeeName: '', clinicName: '', claimedAmount: '' });
 
   const medicalUsageMap = useMemo(() => computeMedicalUsage(benefitHistory, { year }), [benefitHistory, year]);
   const employees = loadEmployees();
@@ -189,9 +188,10 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
   };
 
   function formatDateObj(d: Date): string {
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
+    // Use UTC to avoid timezone off-by-one when Excel dates are parsed at midnight.
+    const yyyy = d.getUTCFullYear();
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
   }
 
@@ -343,14 +343,16 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
       alert('Please enter claimed amount.');
       return;
     }
-    const totalAmount = Number(manual.totalAmount);
+    if (claimedAmount > MEDICAL_ITEM_MAX) {
+      alert(`Claimed amount cannot exceed RM${MEDICAL_ITEM_MAX.toFixed(0)} per receipt.`);
+      return;
+    }
 
     const entry: MedicalLegacyEntry = {
       id: crypto.randomUUID(),
       employeeName,
       date: dateIso,
       clinicName,
-      totalAmount: Number.isFinite(totalAmount) && totalAmount > 0 ? totalAmount : undefined,
       claimedAmount,
       createdAt: Date.now(),
     };
@@ -364,7 +366,7 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
         return;
       }
       setManualOpen(false);
-      setManual({ date: '', employeeName: '', clinicName: '', totalAmount: '', claimedAmount: '' });
+      setManual({ date: '', employeeName: '', clinicName: '', claimedAmount: '' });
       alert('Saved.');
       return;
     }
@@ -373,7 +375,7 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
     setLegacy(next);
     localStorage.setItem(LEGACY_KEY, JSON.stringify(next));
     setManualOpen(false);
-    setManual({ date: '', employeeName: '', clinicName: '', totalAmount: '', claimedAmount: '' });
+    setManual({ date: '', employeeName: '', clinicName: '', claimedAmount: '' });
     alert('Saved (local).');
   };
 
@@ -399,20 +401,28 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
               <div className="flex flex-col">
                 <label className="text-xs font-bold text-gray-500 uppercase">Date</label>
                 <input
+                  type="date"
                   value={manual.date}
                   onChange={(e) => setManual((p) => ({ ...p, date: e.target.value }))}
-                  placeholder="YYYY-MM-DD"
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
                 />
               </div>
               <div className="flex flex-col">
                 <label className="text-xs font-bold text-gray-500 uppercase">Staff Name</label>
-                <input
+                <select
                   value={manual.employeeName}
                   onChange={(e) => setManual((p) => ({ ...p, employeeName: e.target.value }))}
-                  placeholder="e.g. NG WEI PENG"
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
-                />
+                >
+                  <option value="" disabled>
+                    Select employee
+                  </option>
+                  {employees.map((e) => (
+                    <option key={e.name} value={e.name}>
+                      {e.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="flex flex-col sm:col-span-2">
                 <label className="text-xs font-bold text-gray-500 uppercase">Clinic Name</label>
@@ -420,15 +430,6 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
                   value={manual.clinicName}
                   onChange={(e) => setManual((p) => ({ ...p, clinicName: e.target.value }))}
                   placeholder="e.g. AKASIA CLINIC"
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
-                />
-              </div>
-              <div className="flex flex-col">
-                <label className="text-xs font-bold text-gray-500 uppercase">Total Amount</label>
-                <input
-                  value={manual.totalAmount}
-                  onChange={(e) => setManual((p) => ({ ...p, totalAmount: e.target.value }))}
-                  placeholder="Optional"
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
                 />
               </div>
@@ -558,7 +559,6 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
                   <th className="px-4 py-3 w-32">Date</th>
                   <th className="px-4 py-3 w-56">Staff Name</th>
                   <th className="px-4 py-3">Clinic Name</th>
-                  <th className="px-4 py-3 w-36 text-right">Total Amount</th>
                   <th className="px-4 py-3 w-40 text-right">Claimed Amount</th>
                   <th className="px-4 py-3 w-40 text-right">Quota Balance</th>
                 </tr>
@@ -570,7 +570,6 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
                       <td className="px-4 py-2 font-bold text-gray-800" colSpan={4}>
                         TOTAL {monthLabel(g.month)}
                       </td>
-                      <td className="px-4 py-2" />
                       <td className="px-4 py-2 text-right font-mono font-bold text-gray-900">{formatMoney(g.total)}</td>
                       <td className="px-4 py-2" />
                     </tr>
@@ -579,33 +578,57 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
                       .map((e, idx) => (
                         <tr key={e.id} className="hover:bg-[#fbf7ef]">
                           <td className="px-4 py-2 font-mono text-gray-800">{idx + 1}</td>
-                          <td className="px-4 py-2 text-sm text-gray-700">{e.date}</td>
-                          <td className="px-4 py-2 text-sm font-semibold text-gray-900">{e.employeeName}</td>
                           <td className="px-4 py-2 text-sm text-gray-700">
-                            {e.clinicName}
-                            {e.source === 'benefit' && e.claimNumber ? (
-                              <span className="ml-2 text-[11px] font-mono text-gray-500">({e.claimNumber})</span>
-                            ) : null}
-                          </td>
-                          <td className="px-4 py-2 text-right font-mono text-gray-800">{e.totalAmount != null ? formatMoney(e.totalAmount) : '—'}</td>
-                          <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">
                             {e.source === 'legacy' ? (
                               <input
-                                type="number"
-                                className="w-28 text-right bg-transparent focus:outline-none border-b border-gray-200 focus:border-pink-600"
-                                defaultValue={Number(e.claimedAmount).toFixed(2)}
+                                type="date"
+                                className="text-sm bg-transparent focus:outline-none border-b border-gray-200 focus:border-pink-600"
+                                defaultValue={e.date}
                                 onBlur={(ev) => {
-                                  const n = Number(ev.target.value);
-                                  if (!Number.isFinite(n)) return;
-                                  void updateLegacyEntry(e.id, { claimedAmount: n });
-                                  ev.target.value = n.toFixed(2);
+                                  const iso = parseDateToISO(ev.target.value);
+                                  if (!iso) return;
+                                  void updateLegacyEntry(e.id, { date: iso });
+                                  ev.target.value = iso;
                                 }}
-                                step="0.01"
                               />
                             ) : (
-                              formatMoney(e.claimedAmount)
+                              e.date
                             )}
                           </td>
+                          <td className="px-4 py-2 text-sm font-semibold text-gray-900">
+                            {e.source === 'legacy' ? (
+                              <select
+                                className="bg-transparent focus:outline-none border-b border-gray-200 focus:border-pink-600 text-sm font-semibold"
+                                defaultValue={e.employeeName}
+                                onChange={(ev) => void updateLegacyEntry(e.id, { employeeName: ev.target.value })}
+                              >
+                                {employees.map((emp) => (
+                                  <option key={emp.name} value={emp.name}>
+                                    {emp.name}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              e.employeeName
+                            )}
+                          </td>
+                          <td className="px-4 py-2 text-sm text-gray-700">
+                            {e.source === 'legacy' ? (
+                              <input
+                                className="w-full text-sm bg-transparent focus:outline-none border-b border-gray-200 focus:border-pink-600"
+                                defaultValue={e.clinicName}
+                                onBlur={(ev) => void updateLegacyEntry(e.id, { clinicName: ev.target.value })}
+                              />
+                            ) : (
+                              <>
+                                {e.clinicName}
+                                {e.source === 'benefit' && e.claimNumber ? (
+                                  <span className="ml-2 text-[11px] font-mono text-gray-500">({e.claimNumber})</span>
+                                ) : null}
+                              </>
+                            )}
+                          </td>
+                          <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">{formatMoney(e.claimedAmount)}</td>
                           <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">{formatMoney(e.balance)}</td>
                         </tr>
                       ))}
