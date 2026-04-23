@@ -7,6 +7,7 @@ import {
   listBenefitClaimYears,
   MEDICAL_ITEM_MAX,
   MEDICAL_YEARLY_QUOTA,
+  parseDateToISO,
   parseLegacyMedicalEntriesFromText,
 } from '../lib/quota';
 import { loadEmployees } from '../lib/employees';
@@ -30,8 +31,6 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
   const [openEmployee, setOpenEmployee] = useState<string | null>(null);
   const [mode, setMode] = useState<'summary' | 'ledger'>('summary');
   const [legacy, setLegacy] = useState<MedicalLegacyEntry[]>([]);
-  const [importOpen, setImportOpen] = useState(false);
-  const [importText, setImportText] = useState('');
 
   const medicalUsageMap = useMemo(() => computeMedicalUsage(benefitHistory, { year }), [benefitHistory, year]);
   const employees = loadEmployees();
@@ -125,12 +124,9 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
     return `${name} ${m[1]}`;
   };
 
-  const importPreview = useMemo(() => parseLegacyMedicalEntriesFromText(importText), [importText]);
-
-  const addLegacyEntries = async () => {
-    const parsed = parseLegacyMedicalEntriesFromText(importText);
+  const addLegacyEntries = async (parsed: Array<Omit<MedicalLegacyEntry, 'id'>>) => {
     if (!parsed.length) {
-      alert('No valid rows found. Please paste rows with Date, Staff Name, Clinic Name, Total Amount, Claimed Amount.');
+      alert('No valid rows found. Please upload a valid file (Excel/CSV).');
       return;
     }
     const existingKey = new Set(legacy.map((e) => `${e.employeeName}::${e.date}::${e.claimedAmount}::${e.clinicName || ''}`));
@@ -158,9 +154,99 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
       setLegacy(next);
       localStorage.setItem(LEGACY_KEY, JSON.stringify(next));
     }
-    setImportText('');
-    setImportOpen(false);
     alert(`Imported ${toAdd.length} rows.`);
+  };
+
+  function formatDateObj(d: Date): string {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  const importFromFile = async (file: File) => {
+    const name = (file.name || '').toLowerCase();
+    const isExcel = name.endsWith('.xlsx') || name.endsWith('.xls');
+    const isCsv = name.endsWith('.csv') || name.endsWith('.tsv') || name.endsWith('.txt');
+
+    try {
+      if (isCsv) {
+        const text = await file.text();
+        const parsed = parseLegacyMedicalEntriesFromText(text);
+        await addLegacyEntries(parsed);
+        return;
+      }
+
+      if (isExcel) {
+        // Use ESM CDN import to avoid bundling dependency.
+        const XLSX: any = await import('https://esm.sh/xlsx@0.18.5');
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+        const sheetName = wb.SheetNames?.[0];
+        if (!sheetName) throw new Error('No worksheet found.');
+        const ws = wb.Sheets[sheetName];
+        const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+        if (!Array.isArray(rows) || !rows.length) throw new Error('Empty worksheet.');
+
+        // Find header row
+        let headerRowIdx = 0;
+        for (let i = 0; i < Math.min(rows.length, 20); i++) {
+          const line = rows[i].map((c) => String(c || '').toLowerCase()).join(' | ');
+          if (line.includes('staff') && line.includes('clinic') && (line.includes('claimed') || line.includes('claim'))) {
+            headerRowIdx = i;
+            break;
+          }
+        }
+        const header = rows[headerRowIdx].map((c) => String(c || '').trim().toLowerCase());
+        const colIndex = (needle: string) => header.findIndex((h) => h.replace(/\s+/g, ' ').includes(needle));
+        const idxDate = colIndex('date');
+        const idxStaff = colIndex('staff');
+        const idxClinic = colIndex('clinic');
+        const idxTotal = colIndex('total');
+        const idxClaimed = colIndex('claimed');
+        if (idxDate < 0 || idxStaff < 0 || idxClinic < 0 || idxClaimed < 0) {
+          throw new Error('Could not detect required columns (Date/Staff Name/Clinic Name/Claimed Amount).');
+        }
+
+        const parsed: Array<Omit<MedicalLegacyEntry, 'id'>> = [];
+        for (let i = headerRowIdx + 1; i < rows.length; i++) {
+          const r = rows[i];
+          if (!r || !r.length) continue;
+          const staffName = String(r[idxStaff] ?? '').trim();
+          if (!staffName) continue;
+          const firstCol = String(r[0] ?? '').trim().toUpperCase();
+          if (firstCol === 'TOTAL') continue;
+
+          const dateCell = r[idxDate];
+          let dateIso: string | null = null;
+          if (dateCell instanceof Date) dateIso = formatDateObj(dateCell);
+          else dateIso = parseDateToISO(String(dateCell ?? ''));
+          if (!dateIso) continue;
+
+          const clinicName = String(r[idxClinic] ?? '').trim();
+          const claimedAmount = Number(r[idxClaimed] ?? 0);
+          const totalAmount = idxTotal >= 0 ? Number(r[idxTotal] ?? 0) : NaN;
+          if (!Number.isFinite(claimedAmount) || claimedAmount <= 0) continue;
+
+          parsed.push({
+            employeeName: staffName,
+            date: dateIso,
+            clinicName,
+            totalAmount: Number.isFinite(totalAmount) && totalAmount > 0 ? totalAmount : undefined,
+            claimedAmount,
+            createdAt: Date.now(),
+          });
+        }
+
+        await addLegacyEntries(parsed);
+        return;
+      }
+
+      alert('Please upload an Excel (.xlsx/.xls) or CSV/TSV file.');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(`Import failed: ${msg}`);
+    }
   };
 
   const totals = useMemo(() => {
@@ -171,59 +257,6 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
 
   return (
     <div className="space-y-4">
-      {importOpen && (
-        <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setImportOpen(false)} aria-hidden="true" />
-          <div className="absolute left-1/2 top-1/2 w-[92vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl shadow-xl border border-[#e2d3a8] overflow-hidden">
-            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-              <div className="font-bold text-gray-900">Import past Medical records</div>
-              <button className="text-sm font-semibold text-gray-600 hover:text-gray-900" onClick={() => setImportOpen(false)}>
-                Close
-              </button>
-            </div>
-            <div className="p-4 space-y-3">
-              <div className="text-xs text-gray-600">
-                Paste rows copied from your spreadsheet. Expected columns: Date, Staff Name, Clinic Name, Total Amount, Claimed Amount.
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <label className="text-xs font-semibold text-gray-700 inline-flex items-center gap-2 cursor-pointer">
-                  <span className="px-2.5 py-1.5 rounded-md bg-white border border-gray-300 hover:bg-gray-50">Upload CSV/TSV</span>
-                  <input
-                    type="file"
-                    accept=".csv,.tsv,.txt,text/csv,text/plain"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      e.target.value = '';
-                      if (!file) return;
-                      const reader = new FileReader();
-                      reader.onload = () => setImportText(String(reader.result || ''));
-                      reader.readAsText(file);
-                    }}
-                  />
-                </label>
-                <div className="text-[11px] text-gray-500">Copy/paste also works.</div>
-              </div>
-              <textarea
-                value={importText}
-                onChange={(e) => setImportText(e.target.value)}
-                className="w-full h-40 border border-gray-300 rounded-lg p-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-pink-500"
-                placeholder="Paste here…"
-              />
-              <div className="flex items-center justify-between">
-                <div className="text-xs text-gray-600">Preview rows detected: <span className="font-mono font-semibold">{importPreview.length}</span></div>
-                <button
-                  className="px-3 py-2 rounded-lg bg-pink-600 text-white font-semibold text-sm hover:bg-pink-700"
-                  onClick={addLegacyEntries}
-                >
-                  Import
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="bg-[var(--brand-accent-soft)] border border-[#e2d3a8] rounded-xl shadow-sm p-4 no-print">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -233,14 +266,20 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setImportOpen(true)}
-              className="text-sm font-semibold text-pink-700 hover:text-pink-800 px-2 py-2"
-              title="Import past records"
-            >
-              Import
-            </button>
+            <label className="text-sm font-semibold text-pink-700 hover:text-pink-800 px-2 py-2 cursor-pointer">
+              Upload Excel
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv,.tsv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file) return;
+                  void importFromFile(file);
+                }}
+              />
+            </label>
             <div className="flex items-center rounded-lg border border-[#e2d3a8] bg-white/70 overflow-hidden">
               <button
                 type="button"
