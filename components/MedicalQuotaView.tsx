@@ -31,6 +31,14 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
   const [openEmployee, setOpenEmployee] = useState<string | null>(null);
   const [mode, setMode] = useState<'summary' | 'ledger'>('summary');
   const [legacy, setLegacy] = useState<MedicalLegacyEntry[]>([]);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manual, setManual] = useState<{
+    date: string;
+    employeeName: string;
+    clinicName: string;
+    totalAmount: string;
+    claimedAmount: string;
+  }>({ date: '', employeeName: '', clinicName: '', totalAmount: '', claimedAmount: '' });
 
   const medicalUsageMap = useMemo(() => computeMedicalUsage(benefitHistory, { year }), [benefitHistory, year]);
   const employees = loadEmployees();
@@ -69,7 +77,7 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
       const key = `${employeeName}::${year}`;
       const base = medicalUsageMap.get(key) || createEmptyMedicalUsageSummary(employeeName, year);
       const extra = legacy
-        .filter((e) => (e.employeeName || '').trim() === employeeName)
+        .filter((e) => (e.employeeName || '').trim().toLowerCase() === employeeName.trim().toLowerCase())
         .filter((e) => String(e.date || '').startsWith(String(year)));
       if (!extra.length) return base;
       const add = extra.reduce((s, e) => s + (Number.isFinite(e.claimedAmount) ? e.claimedAmount : 0), 0);
@@ -249,6 +257,93 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
     }
   };
 
+  const legacyForYear = useMemo(
+    () => legacy.filter((e) => String(e?.date || '').startsWith(String(year))),
+    [legacy, year]
+  );
+
+  const clearLegacy = async (scope: 'year' | 'all') => {
+    const list = scope === 'year' ? legacyForYear : legacy;
+    if (!list.length) {
+      alert('No imported records to delete.');
+      return;
+    }
+    const ok = confirm(
+      scope === 'year'
+        ? `Delete ALL imported medical records for ${year}? This cannot be undone.`
+        : 'Delete ALL imported medical records (all years)? This cannot be undone.'
+    );
+    if (!ok) return;
+
+    if (isFirebaseConfigured()) {
+      try {
+        for (const e of list) await firebaseDb.deleteMedicalLegacyEntry(e.id);
+      } catch (err) {
+        console.error('Delete medical legacy failed', err);
+        alert('Failed to delete from Firebase. Please check RTDB rules for "medicalLegacy".');
+        return;
+      }
+      alert('Deleted successfully.');
+      return;
+    }
+
+    const remaining = scope === 'year' ? legacy.filter((e) => !String(e?.date || '').startsWith(String(year))) : [];
+    setLegacy(remaining);
+    localStorage.setItem(LEGACY_KEY, JSON.stringify(remaining));
+    alert('Deleted successfully (local).');
+  };
+
+  const saveManual = async () => {
+    const dateIso = parseDateToISO(manual.date);
+    if (!dateIso) {
+      alert('Please enter a valid date (YYYY-MM-DD or DD/MM/YYYY).');
+      return;
+    }
+    const employeeName = manual.employeeName.trim();
+    if (!employeeName) {
+      alert('Please enter staff name.');
+      return;
+    }
+    const clinicName = manual.clinicName.trim();
+    const claimedAmount = Number(manual.claimedAmount);
+    if (!Number.isFinite(claimedAmount) || claimedAmount <= 0) {
+      alert('Please enter claimed amount.');
+      return;
+    }
+    const totalAmount = Number(manual.totalAmount);
+
+    const entry: MedicalLegacyEntry = {
+      id: crypto.randomUUID(),
+      employeeName,
+      date: dateIso,
+      clinicName,
+      totalAmount: Number.isFinite(totalAmount) && totalAmount > 0 ? totalAmount : undefined,
+      claimedAmount,
+      createdAt: Date.now(),
+    };
+
+    if (isFirebaseConfigured()) {
+      try {
+        await firebaseDb.saveMedicalLegacyEntry(entry);
+      } catch (err) {
+        console.error('Save medical legacy failed', err);
+        alert('Failed to save to Firebase. Please check RTDB rules for "medicalLegacy".');
+        return;
+      }
+      setManualOpen(false);
+      setManual({ date: '', employeeName: '', clinicName: '', totalAmount: '', claimedAmount: '' });
+      alert('Saved.');
+      return;
+    }
+
+    const next = [entry, ...legacy];
+    setLegacy(next);
+    localStorage.setItem(LEGACY_KEY, JSON.stringify(next));
+    setManualOpen(false);
+    setManual({ date: '', employeeName: '', clinicName: '', totalAmount: '', claimedAmount: '' });
+    alert('Saved (local).');
+  };
+
   const totals = useMemo(() => {
     let used = 0;
     for (const r of rows) used += r.used;
@@ -257,6 +352,78 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
 
   return (
     <div className="space-y-4">
+      {manualOpen && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setManualOpen(false)} aria-hidden="true" />
+          <div className="absolute left-1/2 top-1/2 w-[92vw] max-w-xl -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl shadow-xl border border-[#e2d3a8] overflow-hidden">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="font-bold text-gray-900">Add medical record</div>
+              <button className="text-sm font-semibold text-gray-600 hover:text-gray-900" onClick={() => setManualOpen(false)}>
+                Close
+              </button>
+            </div>
+            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex flex-col">
+                <label className="text-xs font-bold text-gray-500 uppercase">Date</label>
+                <input
+                  value={manual.date}
+                  onChange={(e) => setManual((p) => ({ ...p, date: e.target.value }))}
+                  placeholder="YYYY-MM-DD"
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-xs font-bold text-gray-500 uppercase">Staff Name</label>
+                <input
+                  value={manual.employeeName}
+                  onChange={(e) => setManual((p) => ({ ...p, employeeName: e.target.value }))}
+                  placeholder="e.g. NG WEI PENG"
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
+                />
+              </div>
+              <div className="flex flex-col sm:col-span-2">
+                <label className="text-xs font-bold text-gray-500 uppercase">Clinic Name</label>
+                <input
+                  value={manual.clinicName}
+                  onChange={(e) => setManual((p) => ({ ...p, clinicName: e.target.value }))}
+                  placeholder="e.g. AKASIA CLINIC"
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-xs font-bold text-gray-500 uppercase">Total Amount</label>
+                <input
+                  value={manual.totalAmount}
+                  onChange={(e) => setManual((p) => ({ ...p, totalAmount: e.target.value }))}
+                  placeholder="Optional"
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-xs font-bold text-gray-500 uppercase">Claimed Amount</label>
+                <input
+                  value={manual.claimedAmount}
+                  onChange={(e) => setManual((p) => ({ ...p, claimedAmount: e.target.value }))}
+                  placeholder="Required"
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
+                />
+              </div>
+              <div className="sm:col-span-2 flex items-center justify-end gap-2 pt-2">
+                <button
+                  className="px-3 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 font-semibold text-sm hover:bg-gray-50"
+                  onClick={() => setManualOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button className="px-3 py-2 rounded-lg bg-pink-600 text-white font-semibold text-sm hover:bg-pink-700" onClick={saveManual}>
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-[var(--brand-accent-soft)] border border-[#e2d3a8] rounded-xl shadow-sm p-4 no-print">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -266,6 +433,14 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setManualOpen(true)}
+              className="text-sm font-semibold text-pink-700 hover:text-pink-800 px-2 py-2"
+              title="Add record"
+            >
+              Add Row
+            </button>
             <label className="text-sm font-semibold text-pink-700 hover:text-pink-800 px-2 py-2 cursor-pointer">
               Upload Excel
               <input
@@ -280,6 +455,24 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
                 }}
               />
             </label>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => void clearLegacy('year')}
+                className="text-xs font-semibold text-gray-700 hover:text-gray-900 px-2 py-2"
+                title="Delete imported records for this year"
+              >
+                Clear {year}
+              </button>
+              <button
+                type="button"
+                onClick={() => void clearLegacy('all')}
+                className="text-xs font-semibold text-gray-700 hover:text-gray-900 px-2 py-2"
+                title="Delete all imported records"
+              >
+                Clear All
+              </button>
+            </div>
             <div className="flex items-center rounded-lg border border-[#e2d3a8] bg-white/70 overflow-hidden">
               <button
                 type="button"
