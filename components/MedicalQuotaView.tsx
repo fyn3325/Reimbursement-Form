@@ -50,7 +50,7 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
 
   return (
     <div className="space-y-4">
-      <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 no-print">
+      <div className="bg-[var(--brand-accent-soft)] border border-[#e2d3a8] rounded-xl shadow-sm p-4 no-print">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="text-lg font-bold text-gray-900">Medical Quota</div>
@@ -63,7 +63,7 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
             <select
               value={year}
               onChange={(e) => setYear(Number(e.target.value))}
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
+              className="border border-[#e2d3a8] rounded-lg px-3 py-2 text-sm font-medium bg-white/70"
             >
               {years.map((y) => (
                 <option key={y} value={y}>
@@ -75,7 +75,7 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search employee…"
-              className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white"
+              className="border border-[#e2d3a8] rounded-lg px-3 py-2 text-sm font-medium bg-white/70"
             />
           </div>
         </div>
@@ -85,10 +85,10 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
         </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white border border-[#e2d3a8] rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-left border-collapse">
-            <thead className="bg-gray-50">
+            <thead className="bg-[#f3ead6]">
               <tr className="text-xs font-bold text-gray-500 uppercase">
                 <th className="px-4 py-3">Employee</th>
                 <th className="px-4 py-3 w-40 text-right">Used</th>
@@ -103,7 +103,7 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
                 const isOpen = openEmployee === r.employeeName;
                 return (
                   <React.Fragment key={r.employeeName}>
-                    <tr className="hover:bg-gray-50">
+                    <tr className="hover:bg-[#fbf7ef]">
                       <td className="px-4 py-3 font-semibold text-gray-900">{r.employeeName}</td>
                       <td className="px-4 py-3 text-right font-mono font-semibold">{formatMoney(r.used)}</td>
                       <td className="px-4 py-3 text-right font-mono font-semibold">{formatMoney(r.remaining)}</td>
@@ -124,11 +124,11 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
                       </td>
                     </tr>
                     {isOpen && (
-                      <tr className="bg-white">
+                      <tr className="bg-[#fffaf0]">
                         <td colSpan={6} className="px-4 pb-4">
                           <div className="mt-2 rounded-lg border border-gray-200 overflow-hidden">
                             <table className="w-full text-left border-collapse">
-                              <thead className="bg-gray-50">
+                              <thead className="bg-[#f7f0df]">
                                 <tr className="text-xs font-bold text-gray-500 uppercase">
                                   <th className="px-3 py-2 w-28">Date</th>
                                   <th className="px-3 py-2 w-44">Claim No.</th>
@@ -163,4 +163,3 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
 };
 
 export default MedicalQuotaView;
-
