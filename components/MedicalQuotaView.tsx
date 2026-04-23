@@ -38,6 +38,8 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
     clinicName: string;
     claimedAmount: string;
   }>({ date: '', employeeName: '', clinicName: '', claimedAmount: '' });
+  const [editingLegacyId, setEditingLegacyId] = useState<string | null>(null);
+  const [legacyDraft, setLegacyDraft] = useState<{ date: string; employeeName: string; clinicName: string } | null>(null);
 
   const medicalUsageMap = useMemo(() => computeMedicalUsage(benefitHistory, { year }), [benefitHistory, year]);
   const employees = loadEmployees();
@@ -152,6 +154,42 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
     const updated = legacy.map((e) => (e.id === id ? next : e));
     setLegacy(updated);
     localStorage.setItem(LEGACY_KEY, JSON.stringify(updated));
+  };
+
+  const startEditLegacy = (id: string) => {
+    const e = legacy.find((x) => x.id === id);
+    if (!e) return;
+    setEditingLegacyId(id);
+    setLegacyDraft({
+      date: e.date,
+      employeeName: e.employeeName,
+      clinicName: e.clinicName || '',
+    });
+  };
+
+  const cancelEditLegacy = () => {
+    setEditingLegacyId(null);
+    setLegacyDraft(null);
+  };
+
+  const saveEditLegacy = async () => {
+    if (!editingLegacyId || !legacyDraft) return;
+    const dateIso = parseDateToISO(legacyDraft.date) || legacyDraft.date;
+    if (!parseDateToISO(dateIso)) {
+      alert('Invalid date.');
+      return;
+    }
+    const employeeName = legacyDraft.employeeName.trim();
+    if (!employeeName) {
+      alert('Staff name is required.');
+      return;
+    }
+    await updateLegacyEntry(editingLegacyId, {
+      date: dateIso,
+      employeeName,
+      clinicName: legacyDraft.clinicName.trim(),
+    });
+    cancelEditLegacy();
   };
 
   const addLegacyEntries = async (parsed: Array<Omit<MedicalLegacyEntry, 'id'>>) => {
@@ -561,6 +599,7 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
                   <th className="px-4 py-3">Clinic Name</th>
                   <th className="px-4 py-3 w-40 text-right">Claimed Amount</th>
                   <th className="px-4 py-3 w-40 text-right">Quota Balance</th>
+                  <th className="px-4 py-3 w-28 text-right no-print">Edit</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -579,29 +618,27 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
                         <tr key={e.id} className="hover:bg-[#fbf7ef]">
                           <td className="px-4 py-2 font-mono text-gray-800">{idx + 1}</td>
                           <td className="px-4 py-2 text-sm text-gray-700">
-                            {e.source === 'legacy' ? (
+                            {e.source === 'legacy' && editingLegacyId === e.id && legacyDraft ? (
                               <input
                                 type="date"
                                 className="text-sm bg-transparent focus:outline-none border-b border-gray-200 focus:border-pink-600"
-                                defaultValue={e.date}
-                                onBlur={(ev) => {
-                                  const iso = parseDateToISO(ev.target.value);
-                                  if (!iso) return;
-                                  void updateLegacyEntry(e.id, { date: iso });
-                                  ev.target.value = iso;
-                                }}
+                                value={legacyDraft.date}
+                                onChange={(ev) => setLegacyDraft((p) => (p ? { ...p, date: ev.target.value } : p))}
                               />
                             ) : (
                               e.date
                             )}
                           </td>
                           <td className="px-4 py-2 text-sm font-semibold text-gray-900">
-                            {e.source === 'legacy' ? (
+                            {e.source === 'legacy' && editingLegacyId === e.id && legacyDraft ? (
                               <select
                                 className="bg-transparent focus:outline-none border-b border-gray-200 focus:border-pink-600 text-sm font-semibold"
-                                defaultValue={e.employeeName}
-                                onChange={(ev) => void updateLegacyEntry(e.id, { employeeName: ev.target.value })}
+                                value={legacyDraft.employeeName}
+                                onChange={(ev) => setLegacyDraft((p) => (p ? { ...p, employeeName: ev.target.value } : p))}
                               >
+                                <option value="" disabled>
+                                  Select employee
+                                </option>
                                 {employees.map((emp) => (
                                   <option key={emp.name} value={emp.name}>
                                     {emp.name}
@@ -613,11 +650,11 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
                             )}
                           </td>
                           <td className="px-4 py-2 text-sm text-gray-700">
-                            {e.source === 'legacy' ? (
+                            {e.source === 'legacy' && editingLegacyId === e.id && legacyDraft ? (
                               <input
                                 className="w-full text-sm bg-transparent focus:outline-none border-b border-gray-200 focus:border-pink-600"
-                                defaultValue={e.clinicName}
-                                onBlur={(ev) => void updateLegacyEntry(e.id, { clinicName: ev.target.value })}
+                                value={legacyDraft.clinicName}
+                                onChange={(ev) => setLegacyDraft((p) => (p ? { ...p, clinicName: ev.target.value } : p))}
                               />
                             ) : (
                               <>
@@ -630,6 +667,36 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
                           </td>
                           <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">{formatMoney(e.claimedAmount)}</td>
                           <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">{formatMoney(e.balance)}</td>
+                          <td className="px-4 py-2 text-right no-print">
+                            {e.source !== 'legacy' ? (
+                              <span className="text-xs text-gray-400">—</span>
+                            ) : editingLegacyId === e.id ? (
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  className="text-xs font-semibold text-gray-700 hover:text-gray-900"
+                                  onClick={cancelEditLegacy}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-xs font-semibold text-pink-700 hover:text-pink-800"
+                                  onClick={() => void saveEditLegacy()}
+                                >
+                                  Save
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                className="text-xs font-semibold text-pink-700 hover:text-pink-800"
+                                onClick={() => startEditLegacy(e.id)}
+                              >
+                                Edit
+                              </button>
+                            )}
+                          </td>
                         </tr>
                       ))}
                   </React.Fragment>
