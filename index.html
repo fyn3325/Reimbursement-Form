@@ -69,11 +69,31 @@
         }
         body {
           background-color: white !important;
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
+          -webkit-print-color-adjust: economy;
+          print-color-adjust: economy;
           padding: 0 !important;
           margin: 0 !important;
           overflow: visible !important;
+        }
+        /* Force monochrome print: remove UI fill colors */
+        .bg-gray-50,
+        .bg-gray-100,
+        .bg-pink-50,
+        .bg-pink-50\/40,
+        .bg-pink-100,
+        .bg-\[\#f3ead6\],
+        .bg-\[\#f7f0df\],
+        .bg-\[\#fbf7ef\],
+        .bg-\[\#fffaf0\],
+        .bg-\[\#f7f0df\],
+        .bg-\[var\(--brand-accent-soft\)\] {
+          background: transparent !important;
+          background-color: transparent !important;
+        }
+        .text-pink-600,
+        .text-pink-700,
+        .text-purple-600 {
+          color: #000 !important;
         }
         #root {
           width: 100%;

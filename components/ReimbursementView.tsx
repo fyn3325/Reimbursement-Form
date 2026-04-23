@@ -931,7 +931,11 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
           <div className="border-b-2 border-gray-800 pb-4 sm:pb-6 mb-4 sm:mb-6">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-4">
               <div>
-                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 uppercase tracking-tight">REIMBURSEMENT FORM</h1>
+                <div className="hidden print:flex items-center gap-3 mb-2">
+                  <img src="/gaias-logo.png" alt="GAIAS" className="w-10 h-10 object-contain" />
+                  <div className="text-2xl font-bold text-gray-900 uppercase tracking-tight">REIMBURSEMENT FORM</div>
+                </div>
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 uppercase tracking-tight print:hidden">REIMBURSEMENT FORM</h1>
                 <div className="mt-2 flex items-center gap-2">
                   <span className="text-xs font-bold text-gray-500 uppercase">Charge To:</span>
                   <select
