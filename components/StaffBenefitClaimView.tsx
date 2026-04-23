@@ -5,6 +5,7 @@ import { isFirebaseConfigured } from '../lib/firebase';
 import * as firebaseDb from '../lib/firebase-db';
 import { loadEmployees } from '../lib/employees';
 import { uploadBenefitReceiptFile } from '../lib/firebase-storage';
+import { computeMedicalUsage, MEDICAL_ITEM_MAX, MEDICAL_YEARLY_QUOTA, sumMedicalItems } from '../lib/quota';
 
 const BENEFIT_HISTORY_KEY = 'auditlink_benefit_claims_history';
 
@@ -65,6 +66,12 @@ function yymmFromDate(dateStr: string): { yy: string; mm: string } {
     return { yy: m2[1].slice(-2), mm: m2[2] };
   }
   return { yy: m[1].slice(-2), mm: m[2] };
+}
+
+function yearFromDate(dateStr: string): number {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || ''));
+  if (!m) return new Date().getFullYear();
+  return Number(m[1]);
 }
 
 function createEmptyEmployee(): EmployeeInfo {
@@ -153,6 +160,21 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
   const allEmployees = loadEmployees();
 
   const totalAmount = useMemo(() => items.reduce((s, i) => s + numberOrZero(i.amount), 0), [items]);
+  const currentYear = yearFromDate(employee.claimDate);
+  const medicalUsageMap = useMemo(
+    () => computeMedicalUsage(history, { year: currentYear, excludeClaimId: currentId }),
+    [currentId, currentYear, history]
+  );
+  const medicalUsed = useMemo(() => {
+    const key = `${(employee.name || '').trim()}::${currentYear}`;
+    return medicalUsageMap.get(key)?.used || 0;
+  }, [currentYear, employee.name, medicalUsageMap]);
+  const medicalThisClaim = useMemo(() => sumMedicalItems(items), [items]);
+  const medicalRemaining = Math.max(0, MEDICAL_YEARLY_QUOTA - medicalUsed);
+  const hasMedicalLineOverMax = useMemo(
+    () => items.some((i) => (i?.benefitType || '').trim() === 'Medical' && numberOrZero(i?.amount) > MEDICAL_ITEM_MAX),
+    [items]
+  );
 
   const generateClaimNumber = useCallback((benefitClaims: StaffBenefitClaim[], reimbursementNumbers: string[], claimDate: string) => {
     const { yy, mm } = yymmFromDate(claimDate);
@@ -306,6 +328,21 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
   };
 
   const saveClaim = async () => {
+    // Enforce Medical rules:
+    // - Each medical line max RM50
+    // - Each employee yearly medical quota RM200
+    const medicalLineOver = items.find((i) => (i.benefitType || '').trim() === 'Medical' && numberOrZero(i.amount) > MEDICAL_ITEM_MAX);
+    if (medicalLineOver) {
+      alert(`Medical item max is RM${MEDICAL_ITEM_MAX.toFixed(0)} per entry. Please reduce the amount.`);
+      return;
+    }
+    if (medicalThisClaim > 0 && medicalThisClaim > medicalRemaining) {
+      alert(
+        `Medical yearly quota exceeded.\n\nYear: ${currentYear}\nUsed: RM${medicalUsed.toFixed(2)}\nRemaining: RM${medicalRemaining.toFixed(2)}\nThis claim medical: RM${medicalThisClaim.toFixed(2)}`
+      );
+      return;
+    }
+
     const timestamp = Date.now();
     const savedId = currentId ?? crypto.randomUUID();
     setIsSaving(true);
@@ -696,6 +733,43 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
             </div>
           </div>
 
+          <div className="mb-4">
+            <div
+              className={`rounded-lg border px-3 py-2 text-sm ${
+                hasMedicalLineOverMax || (medicalThisClaim > 0 && medicalThisClaim > medicalRemaining)
+                  ? 'border-red-300 bg-red-50 text-red-800'
+                  : 'border-gray-200 bg-gray-50 text-gray-700'
+              }`}
+            >
+              <div className="font-semibold">Medical quota</div>
+              <div className="text-xs mt-1">
+                Yearly quota: RM{MEDICAL_YEARLY_QUOTA.toFixed(0)} per employee · Max per medical entry: RM{MEDICAL_ITEM_MAX.toFixed(0)}
+              </div>
+              {employee.name?.trim() ? (
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                  <span>
+                    Used ({currentYear}): <span className="font-mono font-semibold">RM{medicalUsed.toFixed(2)}</span>
+                  </span>
+                  <span>
+                    Remaining: <span className="font-mono font-semibold">RM{medicalRemaining.toFixed(2)}</span>
+                  </span>
+                  <span>
+                    This claim medical: <span className="font-mono font-semibold">RM{medicalThisClaim.toFixed(2)}</span>
+                  </span>
+                </div>
+              ) : (
+                <div className="mt-2 text-xs text-gray-500">Select an employee to see used/remaining quota.</div>
+              )}
+
+              {hasMedicalLineOverMax && (
+                <div className="mt-2 text-xs font-semibold">One or more medical items exceed RM{MEDICAL_ITEM_MAX.toFixed(0)} and will be blocked on save.</div>
+              )}
+              {!hasMedicalLineOverMax && medicalThisClaim > 0 && medicalThisClaim > medicalRemaining && (
+                <div className="mt-2 text-xs font-semibold">This claim exceeds the remaining quota and will be blocked on save.</div>
+              )}
+            </div>
+          </div>
+
           <div className="flex items-center justify-between gap-3 mb-3">
             <div className="text-sm font-semibold text-gray-800">Benefit Items</div>
             <div className="flex items-center gap-2 no-print">
@@ -797,7 +871,9 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                           if (v == null || v === '') return;
                           const n = Number(v);
                           if (!Number.isFinite(n)) return;
-                          updateItem(i.id, 'amount', n.toFixed(2));
+                          const isMedical = (i.benefitType || '').trim() === 'Medical';
+                          const capped = isMedical ? Math.min(n, MEDICAL_ITEM_MAX) : n;
+                          updateItem(i.id, 'amount', capped.toFixed(2));
                         }}
                         className="w-24 text-right text-sm font-mono font-medium bg-transparent focus:outline-none"
                         placeholder="0.00"

@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { ClipboardList, Car, HeartHandshake, RefreshCcw } from 'lucide-react';
+import { ClipboardList, Car, HeartHandshake, RefreshCcw, Stethoscope } from 'lucide-react';
 import ReimbursementView from './ReimbursementView';
 import MileageClaimView from './MileageClaimView';
 import StaffBenefitClaimView from './StaffBenefitClaimView';
+import MedicalQuotaView from './MedicalQuotaView';
 import type { EmployeeInfo } from '../types';
 import { resetEmployeeOverrides } from '../lib/employees';
 import type { StaffBenefitClaim } from '../types';
 import { isFirebaseConfigured } from '../lib/firebase';
 import * as firebaseDb from '../lib/firebase-db';
 
-type ClaimsTab = 'reimbursement' | 'mileage' | 'benefit';
+type ClaimsTab = 'reimbursement' | 'mileage' | 'benefit' | 'quota';
 
 const ClaimsHub: React.FC = () => {
   const [tab, setTab] = useState<ClaimsTab>('reimbursement');
@@ -41,6 +42,7 @@ const ClaimsHub: React.FC = () => {
     { id: 'reimbursement', label: 'Reimbursement', Icon: ClipboardList },
     { id: 'benefit', label: 'Staff Benefit', Icon: HeartHandshake },
     { id: 'mileage', label: 'Mileage Claim', Icon: Car },
+    { id: 'quota', label: 'Medical Quota', Icon: Stethoscope },
   ];
 
   return (
@@ -114,6 +116,7 @@ const ClaimsHub: React.FC = () => {
           onOpenClaimConsumed={() => setOpenMileageNumber(null)}
         />
       )}
+      {tab === 'quota' && <MedicalQuotaView benefitHistory={benefitHistory} />}
     </div>
   );
 };

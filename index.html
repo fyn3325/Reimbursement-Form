@@ -7,31 +7,56 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+      :root {
+        --brand-bg: #f6f7fb;
+        --brand-surface: #ffffff;
+        --brand-ink: #0b1220;
+        --brand-ink-hover: #070b14;
+        --brand-accent: #b7922f;
+        --brand-accent-hover: #a88424;
+        --brand-accent-soft: #f4efe2;
+      }
       html {
         -webkit-tap-highlight-color: transparent;
       }
       body {
         font-family: 'Inter', sans-serif;
-        background-color: #fdf2f8;
+        background-color: var(--brand-bg);
         padding-left: env(safe-area-inset-left);
         padding-right: env(safe-area-inset-right);
         padding-bottom: env(safe-area-inset-bottom);
       }
-      /* Custom scrollbar - pink theme */
+      /* Custom scrollbar - premium neutral */
       ::-webkit-scrollbar {
         width: 8px;
         height: 8px;
       }
       ::-webkit-scrollbar-track {
-        background: #fce7f3;
+        background: #eef2f7;
       }
       ::-webkit-scrollbar-thumb {
-        background: #f9a8d4;
+        background: #cbd5e1;
         border-radius: 4px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #ec4899;
+        background: #94a3b8;
       }
+
+      /* Theme remap: keep existing Tailwind "pink" utility classes but render as premium palette */
+      .bg-pink-50 { background-color: var(--brand-bg) !important; }
+      .bg-pink-50\/40 { background-color: rgba(246, 247, 251, 0.4) !important; }
+      .bg-pink-100 { background-color: #eef2f7 !important; }
+      .bg-pink-600 { background-color: var(--brand-ink) !important; }
+      .bg-pink-700 { background-color: var(--brand-ink-hover) !important; }
+      .text-pink-600, .text-pink-700 { color: var(--brand-accent) !important; }
+      .hover\:text-pink-700:hover { color: var(--brand-accent-hover) !important; }
+      .border-pink-200 { border-color: #e5e7eb !important; }
+      .border-pink-300 { border-color: #e2d3a8 !important; }
+      .border-pink-400, .border-l-pink-600, .border-b-pink-400 { border-color: var(--brand-accent) !important; }
+      .ring-pink-100 { --tw-ring-color: var(--brand-accent-soft) !important; }
+      .hover\:ring-pink-500:hover, .focus\:ring-pink-500:focus { --tw-ring-color: var(--brand-accent) !important; }
+      .focus\:border-pink-600:focus { border-color: var(--brand-accent) !important; }
+      .shadow-pink-900\/50 { --tw-shadow-color: rgba(11, 18, 32, 0.5) !important; }
 
       /* Print Styles */
       @media print {
