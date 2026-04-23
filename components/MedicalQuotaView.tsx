@@ -132,6 +132,29 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
     return `${name} ${m[1]}`;
   };
 
+  const updateLegacyEntry = async (
+    id: string,
+    patch: Partial<Pick<MedicalLegacyEntry, 'date' | 'employeeName' | 'clinicName' | 'totalAmount' | 'claimedAmount'>>
+  ) => {
+    const existing = legacy.find((e) => e.id === id);
+    if (!existing) return;
+    const next: MedicalLegacyEntry = { ...existing, ...patch };
+
+    if (isFirebaseConfigured()) {
+      try {
+        await firebaseDb.saveMedicalLegacyEntry(next);
+      } catch (err) {
+        console.error('Update medical legacy failed', err);
+        alert('Failed to update. Please check RTDB rules for "medicalLegacy".');
+      }
+      return;
+    }
+
+    const updated = legacy.map((e) => (e.id === id ? next : e));
+    setLegacy(updated);
+    localStorage.setItem(LEGACY_KEY, JSON.stringify(updated));
+  };
+
   const addLegacyEntries = async (parsed: Array<Omit<MedicalLegacyEntry, 'id'>>) => {
     if (!parsed.length) {
       alert('No valid rows found. Please upload a valid file (Excel/CSV).');
@@ -217,6 +240,7 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
         }
 
         const parsed: Array<Omit<MedicalLegacyEntry, 'id'>> = [];
+        let skipped = 0;
         for (let i = headerRowIdx + 1; i < rows.length; i++) {
           const r = rows[i];
           if (!r || !r.length) continue;
@@ -228,8 +252,16 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
           const dateCell = r[idxDate];
           let dateIso: string | null = null;
           if (dateCell instanceof Date) dateIso = formatDateObj(dateCell);
-          else dateIso = parseDateToISO(String(dateCell ?? ''));
-          if (!dateIso) continue;
+          else if (typeof dateCell === 'number' && Number.isFinite(dateCell)) {
+            const code = XLSX.SSF?.parse_date_code?.(dateCell);
+            if (code && code.y && code.m && code.d) {
+              dateIso = `${String(code.y)}-${String(code.m).padStart(2, '0')}-${String(code.d).padStart(2, '0')}`;
+            }
+          } else dateIso = parseDateToISO(String(dateCell ?? ''));
+          if (!dateIso) {
+            skipped++;
+            continue;
+          }
 
           const clinicName = String(r[idxClinic] ?? '').trim();
           const claimedAmount = Number(r[idxClaimed] ?? 0);
@@ -247,6 +279,7 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
         }
 
         await addLegacyEntries(parsed);
+        if (skipped) alert(`Imported ${parsed.length} rows. Skipped ${skipped} rows (invalid date).`);
         return;
       }
 
@@ -555,7 +588,24 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
                             ) : null}
                           </td>
                           <td className="px-4 py-2 text-right font-mono text-gray-800">{e.totalAmount != null ? formatMoney(e.totalAmount) : '—'}</td>
-                          <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">{formatMoney(e.claimedAmount)}</td>
+                          <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">
+                            {e.source === 'legacy' ? (
+                              <input
+                                type="number"
+                                className="w-28 text-right bg-transparent focus:outline-none border-b border-gray-200 focus:border-pink-600"
+                                defaultValue={Number(e.claimedAmount).toFixed(2)}
+                                onBlur={(ev) => {
+                                  const n = Number(ev.target.value);
+                                  if (!Number.isFinite(n)) return;
+                                  void updateLegacyEntry(e.id, { claimedAmount: n });
+                                  ev.target.value = n.toFixed(2);
+                                }}
+                                step="0.01"
+                              />
+                            ) : (
+                              formatMoney(e.claimedAmount)
+                            )}
+                          </td>
                           <td className="px-4 py-2 text-right font-mono font-semibold text-gray-900">{formatMoney(e.balance)}</td>
                         </tr>
                       ))}

@@ -129,11 +129,52 @@ export function parseDateToISO(dateStr: string): string | null {
   if (!s) return null;
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const iso2 = /^(\d{4})\/(\d{2})\/(\d{2})$/.exec(s);
+  if (iso2) return `${iso2[1]}-${iso2[2]}-${iso2[3]}`;
   const dmy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
   if (dmy) {
     const dd = dmy[1].padStart(2, '0');
     const mm = dmy[2].padStart(2, '0');
     return `${dmy[3]}-${mm}-${dd}`;
+  }
+  const dmy2 = /^(\d{1,2})-(\d{1,2})-(\d{4})$/.exec(s);
+  if (dmy2) {
+    const dd = dmy2[1].padStart(2, '0');
+    const mm = dmy2[2].padStart(2, '0');
+    return `${dmy2[3]}-${mm}-${dd}`;
+  }
+  const dmy3 = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(s);
+  if (dmy3) {
+    const dd = dmy3[1].padStart(2, '0');
+    const mm = dmy3[2].padStart(2, '0');
+    return `${dmy3[3]}-${mm}-${dd}`;
+  }
+
+  // Compact formats commonly found in spreadsheets: "DDMMYYYY", "DDMM YYYY", "DMMYYYY", etc.
+  const digits = s.replace(/\D/g, '');
+  if (digits.length === 8) {
+    const dd = Number(digits.slice(0, 2));
+    const mm = Number(digits.slice(2, 4));
+    const yyyy = Number(digits.slice(4, 8));
+    if (yyyy >= 1900 && yyyy <= 2100 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+      return `${String(yyyy)}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+    }
+  }
+  if (digits.length === 7) {
+    // Try DMMYYYY
+    const dd = Number(digits.slice(0, 1));
+    const mm = Number(digits.slice(1, 3));
+    const yyyy = Number(digits.slice(3, 7));
+    if (yyyy >= 1900 && yyyy <= 2100 && mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31) {
+      return `${String(yyyy)}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+    }
+    // Try DD M YYYY (e.g. "010 2026" after stripping)
+    const dd2 = Number(digits.slice(0, 2));
+    const mm2 = Number(digits.slice(2, 3));
+    const yyyy2 = Number(digits.slice(3, 7));
+    if (yyyy2 >= 1900 && yyyy2 <= 2100 && mm2 >= 1 && mm2 <= 12 && dd2 >= 1 && dd2 <= 31) {
+      return `${String(yyyy2)}-${String(mm2).padStart(2, '0')}-${String(dd2).padStart(2, '0')}`;
+    }
   }
   return null;
 }
