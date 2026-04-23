@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Save, Loader2, Trash2, Plus, History, PanelLeft, Pencil, Printer, FileSpreadsheet, X } from 'lucide-react';
-import type { BenefitClaimItem, EmployeeInfo, StaffBenefitClaim } from '../types';
+import type { BenefitClaimItem, EmployeeInfo, MedicalLegacyEntry, StaffBenefitClaim } from '../types';
 import { isFirebaseConfigured } from '../lib/firebase';
 import * as firebaseDb from '../lib/firebase-db';
 import { loadEmployees } from '../lib/employees';
@@ -8,6 +8,9 @@ import { uploadBenefitReceiptFile } from '../lib/firebase-storage';
 import { computeMedicalUsage, MEDICAL_ITEM_MAX, MEDICAL_YEARLY_QUOTA, sumMedicalItems } from '../lib/quota';
 
 const BENEFIT_HISTORY_KEY = 'auditlink_benefit_claims_history';
+const MEDICAL_LEGACY_KEY = 'auditlink_medical_legacy_entries';
+const PENDING_BENEFIT_RECEIPTS_KEY = 'auditlink_pending_benefit_receipts_v1';
+const LOCAL_BENEFIT_RECEIPT_PREFIX = 'local-benefit-receipt:';
 
 const CURRENCIES_LIST = ['MYR', 'USD', 'SGD', 'CNY', 'EUR', 'GBP', 'AUD', 'JPY', 'THB', 'IDR'];
 const DEFAULT_BENEFIT_TYPES = [
@@ -121,6 +124,76 @@ function extractMileageClaimNumber(text: string | undefined | null): string | nu
   return m ? m[1] : null;
 }
 
+type PendingBenefitReceipts = Record<
+  string,
+  Record<string, { dataUrl: string; fileName?: string; updatedAt: number }>
+>;
+
+function loadPendingBenefitReceipts(): PendingBenefitReceipts {
+  try {
+    const raw = localStorage.getItem(PENDING_BENEFIT_RECEIPTS_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? (parsed as PendingBenefitReceipts) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writePendingBenefitReceipts(map: PendingBenefitReceipts) {
+  try {
+    localStorage.setItem(PENDING_BENEFIT_RECEIPTS_KEY, JSON.stringify(map));
+  } catch {
+    // ignore storage quota errors
+  }
+}
+
+function setPendingBenefitReceipt(claimId: string, itemId: string, dataUrl: string, fileName?: string) {
+  const map = loadPendingBenefitReceipts();
+  map[claimId] = map[claimId] || {};
+  map[claimId][itemId] = { dataUrl, fileName, updatedAt: Date.now() };
+  writePendingBenefitReceipts(map);
+}
+
+function getPendingBenefitReceipt(claimId: string, itemId: string): { dataUrl: string; fileName?: string } | null {
+  const map = loadPendingBenefitReceipts();
+  const entry = map?.[claimId]?.[itemId];
+  if (!entry?.dataUrl) return null;
+  return { dataUrl: entry.dataUrl, fileName: entry.fileName };
+}
+
+function clearPendingBenefitReceipt(claimId: string, itemId: string) {
+  const map = loadPendingBenefitReceipts();
+  if (!map?.[claimId]?.[itemId]) return;
+  delete map[claimId][itemId];
+  if (!Object.keys(map[claimId]).length) delete map[claimId];
+  writePendingBenefitReceipts(map);
+}
+
+function localBenefitReceiptRef(claimId: string, itemId: string) {
+  return `${LOCAL_BENEFIT_RECEIPT_PREFIX}${claimId}:${itemId}`;
+}
+
+function parseLocalBenefitReceiptRef(ref: unknown): { claimId: string; itemId: string } | null {
+  const s = typeof ref === 'string' ? ref : '';
+  if (!s.startsWith(LOCAL_BENEFIT_RECEIPT_PREFIX)) return null;
+  const rest = s.slice(LOCAL_BENEFIT_RECEIPT_PREFIX.length);
+  const parts = rest.split(':');
+  if (parts.length !== 2) return null;
+  return { claimId: parts[0], itemId: parts[1] };
+}
+
+function mimeFromDataUrl(dataUrl: string): string {
+  const m = /^data:([^;]+);/i.exec(String(dataUrl || ''));
+  return m?.[1] || 'application/octet-stream';
+}
+
+function base64FromDataUrl(dataUrl: string): string {
+  const s = String(dataUrl || '');
+  const idx = s.indexOf('base64,');
+  if (idx === -1) return '';
+  return s.slice(idx + 'base64,'.length);
+}
+
 export interface StaffBenefitClaimViewProps {
   prefillFromMileage?: {
     employee: EmployeeInfo;
@@ -146,6 +219,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
 }) => {
   const [history, setHistory] = useState<StaffBenefitClaim[]>([]);
   const [reimbursementHistoryNumbers, setReimbursementHistoryNumbers] = useState<string[]>([]);
+  const [medicalLegacy, setMedicalLegacy] = useState<MedicalLegacyEntry[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [claimNumber, setClaimNumber] = useState<string>('');
   const [employee, setEmployee] = useState<EmployeeInfo>(() => createEmptyEmployee());
@@ -167,8 +241,13 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
   );
   const medicalUsed = useMemo(() => {
     const key = `${(employee.name || '').trim()}::${currentYear}`;
-    return medicalUsageMap.get(key)?.used || 0;
-  }, [currentYear, employee.name, medicalUsageMap]);
+    const base = medicalUsageMap.get(key)?.used || 0;
+    const extra = (medicalLegacy || [])
+      .filter((e) => (e?.employeeName || '').trim() === (employee.name || '').trim())
+      .filter((e) => String(e?.date || '').startsWith(String(currentYear)))
+      .reduce((s, e) => s + numberOrZero(e?.claimedAmount), 0);
+    return base + extra;
+  }, [currentYear, employee.name, medicalLegacy, medicalUsageMap]);
   const medicalThisClaim = useMemo(() => sumMedicalItems(items), [items]);
   const medicalRemaining = Math.max(0, MEDICAL_YEARLY_QUOTA - medicalUsed);
   const hasMedicalLineOverMax = useMemo(
@@ -214,9 +293,11 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
         const nums = (claims || []).map((c) => c?.claimNumber || '').filter(Boolean);
         setReimbursementHistoryNumbers(nums);
       });
+      const unsubLegacy = firebaseDb.subscribeToMedicalLegacy((entries) => setMedicalLegacy(entries));
       return () => {
         unsubBenefit();
         unsubReimb();
+        unsubLegacy();
       };
     }
     try {
@@ -227,9 +308,13 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
       const reimbLoaded = reimbSaved ? JSON.parse(reimbSaved) : [];
       const reimbNums = Array.isArray(reimbLoaded) ? reimbLoaded.map((c: any) => c?.claimNumber || '').filter(Boolean) : [];
       setReimbursementHistoryNumbers(reimbNums);
+      const legacySaved = localStorage.getItem(MEDICAL_LEGACY_KEY);
+      const legacyLoaded = legacySaved ? JSON.parse(legacySaved) : [];
+      setMedicalLegacy(Array.isArray(legacyLoaded) ? legacyLoaded : []);
     } catch {
       setHistory([]);
       setReimbursementHistoryNumbers([]);
+      setMedicalLegacy([]);
     }
   }, []);
 
@@ -327,6 +412,42 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
     );
   };
 
+  const autoFillFromReceipt = async (itemId: string, dataUrl: string) => {
+    try {
+      const base64 = base64FromDataUrl(dataUrl);
+      if (!base64) return;
+      const mimeType = mimeFromDataUrl(dataUrl);
+      const res = await fetch('/api/process-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base64Image: base64, mimeType }),
+      });
+      if (!res.ok) return;
+      const parsed = await res.json();
+      const first = Array.isArray(parsed) ? parsed[0] : null;
+      if (!first) return;
+      const extractedDate = typeof first.date === 'string' ? first.date : '';
+      const extractedAmount = typeof first.amount === 'number' ? first.amount : NaN;
+      const extractedMerchant = typeof first.merchant === 'string' ? first.merchant : '';
+
+      setItems((prev) =>
+        prev.map((it) => {
+          if (it.id !== itemId) return it;
+          const next: BenefitClaimItem = { ...it };
+          // Only auto-fill when the user hasn't filled something yet (to avoid overwriting edits).
+          if (extractedDate && String(next.date || '') === today()) next.date = extractedDate;
+          const currentAmount = numberOrZero(next.amount);
+          const amountEmpty = String(next.amount ?? '').trim() === '' || currentAmount === 0;
+          if (Number.isFinite(extractedAmount) && extractedAmount > 0 && amountEmpty) next.amount = Number(extractedAmount).toFixed(2);
+          if (extractedMerchant && !String(next.description || '').trim()) next.description = extractedMerchant;
+          return next;
+        })
+      );
+    } catch {
+      // ignore extraction failures
+    }
+  };
+
   const saveClaim = async () => {
     // Enforce Medical rules:
     // - Each medical line max RM50
@@ -349,20 +470,43 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
 
     let itemsToSave = [...items];
     if (isFirebaseConfigured()) {
-      try {
-        for (let i = 0; i < itemsToSave.length; i++) {
-          const item = itemsToSave[i];
-          const dataUrl = item.receiptFileUrl;
-          if (dataUrl && dataUrl.startsWith('data:')) {
-            const url = await uploadBenefitReceiptFile(savedId, item.id, dataUrl);
-            itemsToSave[i] = { ...item, receiptFileUrl: url };
+      const failedUploads: string[] = [];
+      for (let i = 0; i < itemsToSave.length; i++) {
+        const item = itemsToSave[i];
+        let dataUrl = item.receiptFileUrl;
+
+        // If the receipt is stored locally (previous failed upload), try uploading again.
+        if ((!dataUrl || !dataUrl.startsWith('data:')) && item.receiptRef) {
+          const parsedLocal = parseLocalBenefitReceiptRef(item.receiptRef);
+          if (parsedLocal) {
+            const pending = getPendingBenefitReceipt(parsedLocal.claimId, parsedLocal.itemId);
+            if (pending?.dataUrl?.startsWith('data:')) dataUrl = pending.dataUrl;
           }
         }
-      } catch (err) {
-        console.error('Upload benefit receipt failed', err);
-        alert('Failed to upload receipt files. Please try again.');
-        setIsSaving(false);
-        return;
+
+        if (dataUrl && dataUrl.startsWith('data:')) {
+          try {
+            const url = await uploadBenefitReceiptFile(savedId, item.id, dataUrl);
+            itemsToSave[i] = { ...item, receiptFileUrl: url, receiptRef: '', receiptFileName: item.receiptFileName };
+            clearPendingBenefitReceipt(savedId, item.id);
+          } catch (err) {
+            console.error('Upload benefit receipt failed', err);
+            failedUploads.push(item.receiptFileName || item.description || item.id);
+            // Keep the receipt locally so the user can still view it on this device, and allow saving the claim.
+            setPendingBenefitReceipt(savedId, item.id, dataUrl, item.receiptFileName);
+            itemsToSave[i] = {
+              ...item,
+              receiptFileUrl: '',
+              receiptRef: localBenefitReceiptRef(savedId, item.id),
+              receiptFileName: item.receiptFileName,
+            };
+          }
+        }
+      }
+
+      if (failedUploads.length) {
+        // Continue saving claim, but inform user after save completes.
+        console.warn('Some benefit receipt uploads failed:', failedUploads);
       }
     }
 
@@ -379,7 +523,14 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
         await firebaseDb.saveBenefitClaim(claimToSave);
         setCurrentId(savedId);
         onSaved?.(claimToSave);
-        alert('Staff Benefit Claim Saved/Amended Successfully');
+        const hasLocalReceipts = claimToSave.items?.some((it) => parseLocalBenefitReceiptRef(it.receiptRef));
+        if (hasLocalReceipts) {
+          alert(
+            'Staff Benefit Claim Saved/Amended Successfully.\n\nSome receipt files could not be uploaded to Firebase Storage, so they are saved locally in this browser only.\n\nTo fix permanently, update Firebase Storage rules (benefit-receipts) and try Save again.'
+          );
+        } else {
+          alert('Staff Benefit Claim Saved/Amended Successfully');
+        }
       } catch (err) {
         console.error('Save benefit claim failed', err);
         alert('Failed to save. Please try again.');
@@ -899,9 +1050,12 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                       </div>
                       <div className="flex items-center gap-2 no-print">
                         {(() => {
+                          const local = parseLocalBenefitReceiptRef(i.receiptRef);
+                          const localUrl = local ? getPendingBenefitReceipt(local.claimId, local.itemId)?.dataUrl || '' : '';
                           const url =
                             i.receiptFileUrl ||
-                            (typeof i.receiptRef === 'string' && i.receiptRef.startsWith('http') ? i.receiptRef : '');
+                            (typeof i.receiptRef === 'string' && i.receiptRef.startsWith('http') ? i.receiptRef : '') ||
+                            localUrl;
                           if (!url) return <span className="text-xs text-gray-400">—</span>;
                           const isImage = url.startsWith('data:image') || /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url);
                           return (
@@ -937,6 +1091,9 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                                 if (!dataUrl.startsWith('data:')) return;
                                 updateItem(i.id, 'receiptFileUrl', dataUrl);
                                 updateItem(i.id, 'receiptFileName', file.name);
+                                updateItem(i.id, 'receiptRef', '');
+                                // Optional: auto-extract date/amount from the receipt using the existing /api/process-receipt endpoint.
+                                autoFillFromReceipt(i.id, dataUrl);
                               };
                               reader.readAsDataURL(file);
                             }}
