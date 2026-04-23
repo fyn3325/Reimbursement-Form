@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { ClipboardList, Car, HeartHandshake, RefreshCcw, Stethoscope } from 'lucide-react';
+import { ClipboardList, Car, HeartHandshake, Stethoscope } from 'lucide-react';
 import ReimbursementView from './ReimbursementView';
 import MileageClaimView from './MileageClaimView';
 import StaffBenefitClaimView from './StaffBenefitClaimView';
 import MedicalQuotaView from './MedicalQuotaView';
 import type { EmployeeInfo } from '../types';
-import { resetEmployeeOverrides } from '../lib/employees';
 import type { StaffBenefitClaim } from '../types';
 import { isFirebaseConfigured } from '../lib/firebase';
 import * as firebaseDb from '../lib/firebase-db';
@@ -63,19 +62,6 @@ const ClaimsHub: React.FC = () => {
             </button>
           );
         })}
-        <button
-          onClick={() => {
-            if (!confirm('Re-import staff list? This will clear any custom employee edits saved in this browser.')) return;
-            resetEmployeeOverrides();
-            alert('Staff list reset. Refreshing…');
-            window.location.reload();
-          }}
-          className="shrink-0 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 border border-gray-200"
-          title="Re-import staff list"
-        >
-          <RefreshCcw className="w-4 h-4" />
-          Staff
-        </button>
       </div>
 
       {tab === 'reimbursement' && (
