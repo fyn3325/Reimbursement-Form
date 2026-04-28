@@ -795,18 +795,20 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
                   onClick={onClick}
                   className="relative"
                   >
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      togglePaid(paidKey);
-                    }}
-                    className={`absolute right-2 top-2 text-[11px] font-semibold px-2 py-1 rounded-md border ${
-                      isPaid ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                    }`}
-                    >
-                    {isPaid ? `Paid ${paidAt}` : 'Paid'}
-                  </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    togglePaid(paidKey);
+                  }}
+                  className={`absolute right-2 top-2 text-[11px] font-semibold px-2 py-1 rounded-md border ${
+                    isPaid ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+  title={isPaid ? `Paid (${paidAt})` : 'Mark as paid'}
+>
+  {isPaid ? `Paid ${paidAt}` : 'Paid'}
+</button>
+
 
                   className={`p-4 border-b border-gray-100 cursor-pointer transition-colors group relative ${
                     active ? 'bg-pink-50 border-l-4 border-l-pink-600' : 'hover:bg-gray-50 border-l-4 border-l-transparent'
