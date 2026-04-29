@@ -828,9 +828,6 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
       </span>
     </div>
 
-                    </span>
-                  </div>
-                </div>
               );
             });
           })()}
