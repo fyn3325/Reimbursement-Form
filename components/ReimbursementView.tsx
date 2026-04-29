@@ -749,7 +749,7 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
     }
   }, [saveDefaultEmployees]);
 
-  const HistorySidebar = () => (
+  const HistorySidebar = useCallback(() => (
     <div className="w-full h-full flex flex-col bg-white overflow-hidden">
       <div className="p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
         <div className="flex items-center gap-2 text-gray-700 font-semibold">
@@ -910,7 +910,9 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
         })()}
       </div>
     </div>
-  );
+
+  ), [history, benefitHistory, paidClaims, currentId, loadClaim, onOpenBenefitClaim, setShowHistoryDrawer, generateNewClaim, togglePaid, setPaidDate]);
+
 
 
   return (
