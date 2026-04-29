@@ -828,13 +828,8 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
       </span>
     </div>
 
-              );
             });
           })()}
-        </div>
-      </div>
-  );
-
   return (
     <div className="flex flex-col md:flex-row md:items-start gap-4 md:gap-6">
       
