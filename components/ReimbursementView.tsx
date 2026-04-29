@@ -790,10 +790,6 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
               };
 
               return (
-                <div
-                  key={`${entry.kind}-${entry.id}`}
-                  onClick={onClick}
-                  return (
   <div
     key={`${entry.kind}-${entry.id}`}
     onClick={onClick}
