@@ -265,6 +265,18 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
       return next;
     });
   };
+
+  const setPaidDate = (paidKey: string, paidAt: string) => {
+    setPaidClaims((prev) => {
+      const next = { ...prev, [paidKey]: { paidAt } };
+      try {
+        localStorage.setItem(PAID_CLAIMS_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
   const ADD_NEW_EMPLOYEE = '__ADD_NEW__';
   const [isManualEmployee, setIsManualEmployee] = useState(false);
   const [presetCategories, setPresetCategories] = useState<string[]>(() => {
@@ -833,21 +845,43 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
                 }`}
                 title={entry.kind === 'benefit' ? 'Staff Benefit' : undefined}
               >
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    togglePaid(paidKey);
-                  }}
-                  className={`absolute right-2 top-2 text-[11px] font-semibold px-2 py-1 rounded-md border ${
-                    isPaid
-                      ? 'bg-gray-900 text-white border-gray-900'
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                  }`}
-                  title={isPaid ? `Paid (${paidAt})` : 'Mark as paid'}
-                >
-                  {isPaid ? `Paid ${paidAt}` : 'Paid'}
-                </button>
+                <div className="absolute right-2 top-2 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      togglePaid(paidKey);
+                    }}
+                    className={`text-[11px] font-semibold px-2 py-1 rounded-md border ${
+                      isPaid
+                        ? 'bg-gray-900 text-white border-gray-900'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                    title={isPaid ? `Paid (${paidAt})` : 'Mark as paid'}
+                  >
+                    {isPaid ? `Paid ${paidAt}` : 'Paid'}
+                  </button>
+
+                  {isPaid && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const next = window.prompt('Paid date (YYYY-MM-DD)', paidAt || new Date().toISOString().slice(0, 10));
+                        if (!next) return;
+                        if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) {
+                          alert('Please use YYYY-MM-DD');
+                          return;
+                        }
+                        setPaidDate(paidKey, next);
+                      }}
+                      className="px-2 py-1 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                      title="Edit paid date"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
 
                 <div className="flex justify-between items-start mb-1 gap-2">
                   <div className="flex items-center gap-2 min-w-0">
