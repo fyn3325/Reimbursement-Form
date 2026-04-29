@@ -14,6 +14,9 @@ const CLAIMS_PATH = 'claims';
 const MILEAGE_CLAIMS_PATH = 'mileageClaims';
 const BENEFIT_CLAIMS_PATH = 'benefitClaims';
 const MEDICAL_LEGACY_PATH = 'medicalLegacy';
+const PAID_CLAIMS_PATH = 'paidClaims';
+
+export type PaidClaimsMap = Record<string, { paidAt: string }>;
 
 function claimsRef() {
   return ref(getFirebaseDatabase(), CLAIMS_PATH);
@@ -181,5 +184,47 @@ export function subscribeToMedicalLegacy(callback: (entries: MedicalLegacyEntry[
       if (e) list.push(e);
     });
     callback(list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)));
+  });
+}
+
+function paidClaimsRef() {
+  return ref(getFirebaseDatabase(), PAID_CLAIMS_PATH);
+}
+
+function paidClaimRef(kind: string, id: string) {
+  return ref(getFirebaseDatabase(), `${PAID_CLAIMS_PATH}/${kind}/${id}`);
+}
+
+export async function setPaidClaim(kind: string, id: string, paidAt: string): Promise<void> {
+  await set(paidClaimRef(kind, id), { paidAt, updatedAt: Date.now() });
+}
+
+export async function removePaidClaim(kind: string, id: string): Promise<void> {
+  await remove(paidClaimRef(kind, id));
+}
+
+export function subscribeToPaidClaims(callback: (paidClaims: PaidClaimsMap) => void): Unsubscribe {
+  return onValue(paidClaimsRef(), (snapshot) => {
+    if (!snapshot.exists()) {
+      callback({});
+      return;
+    }
+
+    const out: PaidClaimsMap = {};
+    snapshot.forEach((kindSnap) => {
+      const kind = kindSnap.key;
+      if (!kind) return;
+      kindSnap.forEach((idSnap) => {
+        const id = idSnap.key;
+        if (!id) return;
+        const val = idSnap.val() as any;
+        const paidAt = typeof val === 'string' ? val : val?.paidAt;
+        if (paidAt) {
+          out[`${kind}:${id}`] = { paidAt: String(paidAt) };
+        }
+      });
+    });
+
+    callback(out);
   });
 }

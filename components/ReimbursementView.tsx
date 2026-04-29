@@ -249,13 +249,27 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
       return {};
     }
   });
+  const paidClaimsSeededRef = useRef(false);
+  const paidClaimsLocalSeedRef = useRef<Record<string, { paidAt: string }>>(paidClaims);
   const togglePaid = (paidKey: string) => {
+    const [kind, id] = paidKey.split(':');
     setPaidClaims((prev) => {
       const next = { ...prev };
       if (next[paidKey]) {
         delete next[paidKey];
+        if (isFirebaseConfigured() && kind && id) {
+          firebaseDb.removePaidClaim(kind, id).catch(() => {
+            // ignore
+          });
+        }
       } else {
-        next[paidKey] = { paidAt: new Date().toLocaleDateString() };
+        const paidAt = new Date().toISOString().slice(0, 10);
+        next[paidKey] = { paidAt };
+        if (isFirebaseConfigured() && kind && id) {
+          firebaseDb.setPaidClaim(kind, id, paidAt).catch(() => {
+            // ignore
+          });
+        }
       }
       try {
         localStorage.setItem(PAID_CLAIMS_KEY, JSON.stringify(next));
@@ -267,8 +281,14 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
   };
 
   const setPaidDate = (paidKey: string, paidAt: string) => {
+    const [kind, id] = paidKey.split(':');
     setPaidClaims((prev) => {
       const next = { ...prev, [paidKey]: { paidAt } };
+      if (isFirebaseConfigured() && kind && id) {
+        firebaseDb.setPaidClaim(kind, id, paidAt).catch(() => {
+          // ignore
+        });
+      }
       try {
         localStorage.setItem(PAID_CLAIMS_KEY, JSON.stringify(next));
       } catch {
@@ -346,6 +366,35 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
       setHistory(loadedHistory);
       generateNewClaim(loadedHistory);
     }
+  }, []);
+
+  useEffect(() => {
+    if (!isFirebaseConfigured()) return;
+    const unsub = firebaseDb.subscribeToPaidClaims((remote) => {
+      if (!paidClaimsSeededRef.current) {
+        paidClaimsSeededRef.current = true;
+        const local = paidClaimsLocalSeedRef.current || {};
+        if (Object.keys(remote).length === 0 && Object.keys(local).length > 0) {
+          Object.entries(local).forEach(([paidKey, val]) => {
+            const [kind, id] = paidKey.split(':');
+            if (!kind || !id) return;
+            const paidAt = val?.paidAt;
+            if (!paidAt) return;
+            firebaseDb.setPaidClaim(kind, id, paidAt).catch(() => {
+              // ignore
+            });
+          });
+          return;
+        }
+      }
+      setPaidClaims(remote);
+      try {
+        localStorage.setItem(PAID_CLAIMS_KEY, JSON.stringify(remote));
+      } catch {
+        // ignore
+      }
+    });
+    return () => unsub();
   }, []);
 
   // --- Logic ---
