@@ -793,46 +793,45 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
                 <div
                   key={`${entry.kind}-${entry.id}`}
                   onClick={onClick}
-                  className="relative"
-                  >
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    togglePaid(paidKey);
-                  }}
-                  className={`absolute right-2 top-2 text-[11px] font-semibold px-2 py-1 rounded-md border ${
-                    isPaid ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                  }`}
-  title={isPaid ? `Paid (${paidAt})` : 'Mark as paid'}
->
-  {isPaid ? `Paid ${paidAt}` : 'Paid'}
-</button>
+                  return (
+  <div
+    key={`${entry.kind}-${entry.id}`}
+    onClick={onClick}
+    className={`relative p-4 border-b border-gray-100 cursor-pointer transition-colors group ${
+      active ? 'bg-pink-50 border-l-4 border-l-pink-600' : 'hover:bg-gray-50 border-l-4 border-l-transparent'
+    }`}
+    title={entry.kind === 'benefit' ? 'Staff Benefit' : undefined}
+  >
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        togglePaid(paidKey);
+      }}
+      className={`absolute right-2 top-2 text-[11px] font-semibold px-2 py-1 rounded-md border ${
+        isPaid
+          ? 'bg-gray-900 text-white border-gray-900'
+          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+      }`}
+      title={isPaid ? `Paid (${paidAt})` : 'Mark as paid'}
+    >
+      {isPaid ? `Paid ${paidAt}` : 'Paid'}
+    </button>
 
+    <div className="flex justify-between items-start mb-1 gap-2">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="text-xs font-bold text-gray-700">{entry.claimNumber}</span>
+        {entry.kind === 'benefit' && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-bold shrink-0">
+            Staff Benefit
+          </span>
+        )}
+      </div>
+      <span className="text-[10px] text-gray-400">
+        {entry.updatedAt ? new Date(entry.updatedAt).toLocaleDateString() : ''}
+      </span>
+    </div>
 
-                  className={`p-4 border-b border-gray-100 cursor-pointer transition-colors group relative ${
-                    active ? 'bg-pink-50 border-l-4 border-l-pink-600' : 'hover:bg-gray-50 border-l-4 border-l-transparent'
-                  }`}
-                  title={entry.kind === 'benefit' ? 'Staff Benefit' : undefined}
-                >
-                  <div className="flex justify-between items-start mb-1 gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-xs font-bold text-gray-700">{entry.claimNumber}</span>
-                      {entry.kind === 'benefit' && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-bold shrink-0">
-                          Staff Benefit
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-[10px] text-gray-400">
-                      {entry.updatedAt ? new Date(entry.updatedAt).toLocaleDateString() : ''}
-                    </span>
-                  </div>
-                  <div className="text-sm font-medium text-gray-900 truncate mb-1">{entry.employeeName}</div>
-                  <div className="flex justify-between items-end">
-                    <span className="text-xs text-gray-500">{entry.itemsCount} items</span>
-                    <span className={`text-xs font-bold ${entry.kind === 'benefit' ? 'text-purple-600' : 'text-pink-600'}`}>
-                      {entry.total.toFixed(2)}
                     </span>
                   </div>
                 </div>
