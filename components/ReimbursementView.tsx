@@ -240,6 +240,31 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
   const [items, setItems] = useState<ClaimItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+  const PAID_CLAIMS_KEY = 'paidClaims:v1';
+  const [paidClaims, setPaidClaims] = useState<Record<string, { paidAt: string }>>(() => {
+    try {
+      const saved = localStorage.getItem(PAID_CLAIMS_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  const togglePaid = (paidKey: string) => {
+    setPaidClaims((prev) => {
+      const next = { ...prev };
+      if (next[paidKey]) {
+        delete next[paidKey];
+      } else {
+        next[paidKey] = { paidAt: new Date().toLocaleDateString() };
+      }
+      try {
+        localStorage.setItem(PAID_CLAIMS_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
   const ADD_NEW_EMPLOYEE = '__ADD_NEW__';
   const [isManualEmployee, setIsManualEmployee] = useState(false);
   const [presetCategories, setPresetCategories] = useState<string[]>(() => {
