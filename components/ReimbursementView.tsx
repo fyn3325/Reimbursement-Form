@@ -714,122 +714,146 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
 
   const HistorySidebar = () => (
     <div className="w-full h-full flex flex-col bg-white overflow-hidden">
-        <div className="p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-gray-700 font-semibold">
-            <History className="w-4 h-4" />
-            History
-          </div>
-          <button
-            onClick={() => setShowHistoryDrawer(false)}
-            className="md:hidden p-2 -m-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
-            aria-label="Close"
-          >
-            <X className="w-5 h-5" />
-          </button>
+      <div className="p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-gray-700 font-semibold">
+          <History className="w-4 h-4" />
+          History
         </div>
-        <div className="p-3 border-b border-gray-200">
-          <button 
-            onClick={() => { generateNewClaim(); setShowHistoryDrawer(false); }}
-            className="w-full flex items-center justify-center gap-2 bg-pink-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-pink-700 transition-colors"
-          >
-            <PlusCircle className="w-4 h-4" />
-            New Claim
-          </button>
-        </div>
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          {(!history || history.length === 0) && (
-             <div className="p-6 text-center text-gray-400 text-sm">No History</div>
-          )}
-          {(() => {
-            const parseSeq = (n: string): number | null => {
-              const m = /^R(\d{2})(\d{2})\/(\d{3})$/.exec(n || '');
-              if (!m) return null;
-              return parseInt(`${m[1]}${m[2]}${m[3]}`, 10);
+        <button
+          onClick={() => setShowHistoryDrawer(false)}
+          className="md:hidden p-2 -m-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+          aria-label="Close"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <div className="p-3 border-b border-gray-200">
+        <button
+          onClick={() => {
+            generateNewClaim();
+            setShowHistoryDrawer(false);
+          }}
+          className="w-full flex items-center justify-center gap-2 bg-pink-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-pink-700 transition-colors"
+        >
+          <PlusCircle className="w-4 h-4" />
+          New Claim
+        </button>
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {(!history || history.length === 0) && (
+          <div className="p-6 text-center text-gray-400 text-sm">No History</div>
+        )}
+
+        {(() => {
+          const parseSeq = (n: string): number | null => {
+            const m = /^R(\d{2})(\d{2})\/(\d{3})$/.exec(n || '');
+            if (!m) return null;
+            return parseInt(`${m[1]}${m[2]}${m[3]}`, 10);
+          };
+
+          const reimbEntries = (history || []).map((claim) => ({
+            kind: 'reimbursement' as const,
+            id: claim.id,
+            claimNumber: claim.claimNumber,
+            updatedAt: claim.updatedAt ?? 0,
+            employeeName: claim.employee?.name || 'Unnamed',
+            itemsCount: (claim.items || []).length,
+            total: (claim.items || []).reduce((s, i) => s + (Number(i?.amount) || 0), 0),
+            seq: parseSeq(claim.claimNumber) ?? -1,
+          }));
+
+          const benefitEntries = (benefitHistory || []).map((claim) => ({
+            kind: 'benefit' as const,
+            id: claim.id,
+            claimNumber: claim.claimNumber,
+            updatedAt: claim.updatedAt ?? 0,
+            employeeName: claim.employee?.name || 'Unnamed',
+            itemsCount: (claim.items || []).length,
+            total: (claim.items || []).reduce((s, i) => s + (Number(i?.amount) || 0), 0),
+            seq: parseSeq(claim.claimNumber) ?? -1,
+          }));
+
+          const combined = [...reimbEntries, ...benefitEntries].sort((a, b) => {
+            if (a.seq !== -1 && b.seq !== -1) return b.seq - a.seq;
+            if (a.seq !== -1) return -1;
+            if (b.seq !== -1) return 1;
+            return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+          });
+
+          return combined.map((entry) => {
+            const paidKey = `${entry.kind}:${entry.id}`;
+            const isPaid = !!paidClaims[paidKey];
+            const paidAt = paidClaims[paidKey]?.paidAt || '';
+            const active = currentId === entry.id && entry.kind === 'reimbursement';
+
+            const onClick = () => {
+              if (entry.kind === 'reimbursement') {
+                const c = (history || []).find((h) => h.id === entry.id);
+                if (c) loadClaim(c);
+                return;
+              }
+              onOpenBenefitClaim?.(entry.id);
             };
 
-            const reimbEntries = (history || []).map((claim) => ({
-              kind: 'reimbursement' as const,
-              id: claim.id,
-              claimNumber: claim.claimNumber,
-              updatedAt: claim.updatedAt ?? 0,
-              employeeName: claim.employee?.name || 'Unnamed',
-              itemsCount: (claim.items || []).length,
-              total: (claim.items || []).reduce((s, i) => s + (Number(i?.amount) || 0), 0),
-              seq: parseSeq(claim.claimNumber) ?? -1,
-            }));
-            const benefitEntries = (benefitHistory || []).map((claim) => ({
-              kind: 'benefit' as const,
-              id: claim.id,
-              claimNumber: claim.claimNumber,
-              updatedAt: claim.updatedAt ?? 0,
-              employeeName: claim.employee?.name || 'Unnamed',
-              itemsCount: (claim.items || []).length,
-              total: (claim.items || []).reduce((s, i) => s + (Number(i?.amount) || 0), 0),
-              seq: parseSeq(claim.claimNumber) ?? -1,
-            }));
+            return (
+              <div
+                key={`${entry.kind}-${entry.id}`}
+                onClick={onClick}
+                className={`relative p-4 border-b border-gray-100 cursor-pointer transition-colors group ${
+                  active
+                    ? 'bg-pink-50 border-l-4 border-l-pink-600'
+                    : 'hover:bg-gray-50 border-l-4 border-l-transparent'
+                }`}
+                title={entry.kind === 'benefit' ? 'Staff Benefit' : undefined}
+              >
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    togglePaid(paidKey);
+                  }}
+                  className={`absolute right-2 top-2 text-[11px] font-semibold px-2 py-1 rounded-md border ${
+                    isPaid
+                      ? 'bg-gray-900 text-white border-gray-900'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                  title={isPaid ? `Paid (${paidAt})` : 'Mark as paid'}
+                >
+                  {isPaid ? `Paid ${paidAt}` : 'Paid'}
+                </button>
 
-            const combined = [...reimbEntries, ...benefitEntries].sort((a, b) => {
-              if (a.seq !== -1 && b.seq !== -1) return b.seq - a.seq; // latest number on top
-              if (a.seq !== -1) return -1;
-              if (b.seq !== -1) return 1;
-              return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
-            });
+                <div className="flex justify-between items-start mb-1 gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs font-bold text-gray-700">{entry.claimNumber}</span>
+                    {entry.kind === 'benefit' && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-bold shrink-0">
+                        Staff Benefit
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-gray-400">
+                    {entry.updatedAt ? new Date(entry.updatedAt).toLocaleDateString() : ''}
+                  </span>
+                </div>
 
-            return combined.map((entry) => {
-              const paidKey = `${entry.kind}:${entry.id}`;
-              const isPaid = !!paidClaims[paidKey];
-              const paidAt = paidClaims[paidKey]?.paidAt || '';
-              const active = currentId === entry.id && entry.kind === 'reimbursement';
-              const onClick = () => {
-                if (entry.kind === 'reimbursement') {
-                  const c = (history || []).find((h) => h.id === entry.id);
-                  if (c) loadClaim(c);
-                  return;
-                }
-                onOpenBenefitClaim?.(entry.id);
-              };
-
-              return (
-  <div
-    key={`${entry.kind}-${entry.id}`}
-    onClick={onClick}
-    className={`relative p-4 border-b border-gray-100 cursor-pointer transition-colors group ${
-      active ? 'bg-pink-50 border-l-4 border-l-pink-600' : 'hover:bg-gray-50 border-l-4 border-l-transparent'
-    }`}
-    title={entry.kind === 'benefit' ? 'Staff Benefit' : undefined}
-  >
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        togglePaid(paidKey);
-      }}
-      className={`absolute right-2 top-2 text-[11px] font-semibold px-2 py-1 rounded-md border ${
-        isPaid
-          ? 'bg-gray-900 text-white border-gray-900'
-          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-      }`}
-      title={isPaid ? `Paid (${paidAt})` : 'Mark as paid'}
-    >
-      {isPaid ? `Paid ${paidAt}` : 'Paid'}
-    </button>
-
-    <div className="flex justify-between items-start mb-1 gap-2">
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="text-xs font-bold text-gray-700">{entry.claimNumber}</span>
-        {entry.kind === 'benefit' && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-bold shrink-0">
-            Staff Benefit
-          </span>
-        )}
+                <div className="text-sm font-medium text-gray-900 truncate mb-1">{entry.employeeName}</div>
+                <div className="flex justify-between items-end">
+                  <span className="text-xs text-gray-500">{entry.itemsCount} items</span>
+                  <span className={`text-xs font-bold ${entry.kind === 'benefit' ? 'text-purple-600' : 'text-pink-600'}`}>
+                    {entry.total.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            );
+          });
+        })()}
       </div>
-      <span className="text-[10px] text-gray-400">
-        {entry.updatedAt ? new Date(entry.updatedAt).toLocaleDateString() : ''}
-      </span>
     </div>
+  );
 
-            });
-          })()}
+
   return (
     <div className="flex flex-col md:flex-row md:items-start gap-4 md:gap-6">
       
