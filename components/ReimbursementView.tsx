@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react';
 import { ClaimItem, EmployeeInfo, ReimbursementClaim, StaffBenefitClaim } from '../types';
-import { isFirebaseConfigured } from '../lib/firebase';
-import * as firebaseDb from '../lib/firebase-db';
-import { uploadReceiptImage } from '../lib/firebase-storage';
+import { isSupabaseConfigured } from '../lib/supabase';
+import * as firebaseDb from '../lib/supabase-db';
+import { uploadReceiptImage } from '../lib/supabase-storage';
 
 const CUSTOM_CATEGORIES_KEY = 'auditlink_custom_categories';
 const CUSTOM_EMPLOYEES_KEY = 'auditlink_custom_employees';
@@ -257,7 +257,7 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
       const next = { ...prev };
       if (next[paidKey]) {
         delete next[paidKey];
-        if (isFirebaseConfigured() && kind && id) {
+        if (isSupabaseConfigured() && kind && id) {
           firebaseDb.removePaidClaim(kind, id).catch(() => {
             // ignore
           });
@@ -265,7 +265,7 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
       } else {
         const paidAt = new Date().toISOString().slice(0, 10);
         next[paidKey] = { paidAt };
-        if (isFirebaseConfigured() && kind && id) {
+        if (isSupabaseConfigured() && kind && id) {
           firebaseDb.setPaidClaim(kind, id, paidAt).catch(() => {
             // ignore
           });
@@ -284,7 +284,7 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
     const [kind, id] = paidKey.split(':');
     setPaidClaims((prev) => {
       const next = { ...prev, [paidKey]: { paidAt } };
-      if (isFirebaseConfigured() && kind && id) {
+      if (isSupabaseConfigured() && kind && id) {
         firebaseDb.setPaidClaim(kind, id, paidAt).catch(() => {
           // ignore
         });
@@ -351,7 +351,7 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
 
   // Load history: Firebase Realtime DB (when configured) or LocalStorage
   useEffect(() => {
-    if (isFirebaseConfigured()) {
+    if (isSupabaseConfigured()) {
       const unsub = firebaseDb.subscribeToClaims((claims) => {
         setHistory(claims);
         if (!initialLoadDone.current) {
@@ -369,11 +369,11 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
   }, []);
 
   useEffect(() => {
-    if (!isFirebaseConfigured()) return;
+    if (!isSupabaseConfigured()) return;
     const unsub = firebaseDb.subscribeToPaidClaims((remote) => {
       if (!paidClaimsSeededRef.current) {
         paidClaimsSeededRef.current = true;
-        const local = paidClaimsLocalSeedRef.current || {};
+        const local: Record<string, { paidAt: string }> = paidClaimsLocalSeedRef.current || {};
         if (Object.keys(remote).length === 0 && Object.keys(local).length > 0) {
           Object.entries(local).forEach(([paidKey, val]) => {
             const [kind, id] = paidKey.split(':');
@@ -456,7 +456,7 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
     const savedId = currentId ?? crypto.randomUUID();
 
     let itemsToSave = [...items];
-    if (isFirebaseConfigured()) {
+    if (isSupabaseConfigured()) {
       setIsSaving(true);
       try {
         for (let i = 0; i < itemsToSave.length; i++) {
@@ -485,7 +485,7 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
       updatedAt: timestamp
     };
 
-    if (isFirebaseConfigured()) {
+    if (isSupabaseConfigured()) {
       try {
         await firebaseDb.saveClaim(claimToSave);
         setCurrentId(savedId);
@@ -533,7 +533,7 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
   const deleteClaim = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (!confirm('Are you sure you want to delete this claim?')) return;
-    if (isFirebaseConfigured()) {
+    if (isSupabaseConfigured()) {
       try {
         await firebaseDb.deleteClaim(id);
         if (currentId === id) generateNewClaim(history.filter(h => h.id !== id));

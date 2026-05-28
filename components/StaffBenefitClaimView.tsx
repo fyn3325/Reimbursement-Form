@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Save, Loader2, Trash2, Plus, History, PanelLeft, Pencil, Printer, FileSpreadsheet, X } from 'lucide-react';
 import type { BenefitClaimItem, EmployeeInfo, MedicalLegacyEntry, StaffBenefitClaim } from '../types';
-import { isFirebaseConfigured } from '../lib/firebase';
-import * as firebaseDb from '../lib/firebase-db';
+import { isSupabaseConfigured } from '../lib/supabase';
+import * as firebaseDb from '../lib/supabase-db';
 import { loadEmployees } from '../lib/employees';
-import { uploadBenefitReceiptFile } from '../lib/firebase-storage';
+import { uploadBenefitReceiptFile } from '../lib/supabase-storage';
 import { computeMedicalUsage, MEDICAL_ITEM_MAX, MEDICAL_YEARLY_QUOTA, sumMedicalItems } from '../lib/quota';
 
 const BENEFIT_HISTORY_KEY = 'auditlink_benefit_claims_history';
@@ -285,7 +285,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
   }, [generateClaimNumber, history, reimbursementHistoryNumbers]);
 
   useEffect(() => {
-    if (isFirebaseConfigured()) {
+    if (isSupabaseConfigured()) {
       const unsubBenefit = firebaseDb.subscribeToBenefitClaims((claims) => {
         setHistory(claims);
       });
@@ -469,7 +469,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
     setIsSaving(true);
 
     let itemsToSave = [...items];
-    if (isFirebaseConfigured()) {
+    if (isSupabaseConfigured()) {
       const failedUploads: string[] = [];
       for (let i = 0; i < itemsToSave.length; i++) {
         const item = itemsToSave[i];
@@ -518,7 +518,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
       updatedAt: timestamp,
     };
 
-    if (isFirebaseConfigured()) {
+    if (isSupabaseConfigured()) {
       try {
         await firebaseDb.saveBenefitClaim(claimToSave);
         setCurrentId(savedId);
@@ -574,7 +574,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
   const deleteClaim = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (!confirm('Are you sure you want to delete this staff benefit claim?')) return;
-    if (isFirebaseConfigured()) {
+    if (isSupabaseConfigured()) {
       try {
         await firebaseDb.deleteBenefitClaim(id);
         if (currentId === id) generateNewClaim(history.filter((h) => h.id !== id));

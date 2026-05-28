@@ -11,8 +11,8 @@ import {
   parseLegacyMedicalEntriesFromText,
 } from '../lib/quota';
 import { loadEmployees } from '../lib/employees';
-import { isFirebaseConfigured } from '../lib/firebase';
-import * as firebaseDb from '../lib/firebase-db';
+import { isSupabaseConfigured } from '../lib/supabase';
+import * as firebaseDb from '../lib/supabase-db';
 
 type MedicalQuotaViewProps = {
   benefitHistory: StaffBenefitClaim[];
@@ -45,7 +45,7 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
   const employees = loadEmployees();
 
   useEffect(() => {
-    if (isFirebaseConfigured()) {
+    if (isSupabaseConfigured()) {
       const unsub = firebaseDb.subscribeToMedicalLegacy((entries) => setLegacy(entries));
       return () => unsub();
     }
@@ -141,7 +141,7 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
     if (!existing) return;
     const next: MedicalLegacyEntry = { ...existing, ...patch };
 
-    if (isFirebaseConfigured()) {
+    if (isSupabaseConfigured()) {
       try {
         await firebaseDb.saveMedicalLegacyEntry(next);
       } catch (err) {
@@ -209,7 +209,7 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
       return;
     }
 
-    if (isFirebaseConfigured()) {
+    if (isSupabaseConfigured()) {
       try {
         for (const e of toAdd) await firebaseDb.saveMedicalLegacyEntry(e);
       } catch (err) {
@@ -346,7 +346,7 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
     );
     if (!ok) return;
 
-    if (isFirebaseConfigured()) {
+    if (isSupabaseConfigured()) {
       try {
         for (const e of list) await firebaseDb.deleteMedicalLegacyEntry(e.id);
       } catch (err) {
@@ -395,7 +395,7 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
       createdAt: Date.now(),
     };
 
-    if (isFirebaseConfigured()) {
+    if (isSupabaseConfigured()) {
       try {
         await firebaseDb.saveMedicalLegacyEntry(entry);
       } catch (err) {

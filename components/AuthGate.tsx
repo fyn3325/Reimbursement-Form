@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut, User } from 'firebase/auth';
-import { getFirebaseAuth, isFirebaseConfigured } from '../lib/firebase';
+import React, { useEffect, useState } from 'react';
+import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabase';
 import { Loader2, Lock, LogIn, LogOut } from 'lucide-react';
+import type { User } from '@supabase/supabase-js';
 
 type AuthGateProps = {
   children: React.ReactNode;
@@ -10,8 +10,7 @@ type AuthGateProps = {
 const REMEMBER_EMAIL_KEY = 'auth:email';
 
 export default function AuthGate({ children }: AuthGateProps) {
-  const enabled = isFirebaseConfigured();
-  const auth = useMemo(() => (enabled ? getFirebaseAuth() : null), [enabled]);
+  const enabled = isSupabaseConfigured();
 
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(enabled);
@@ -27,13 +26,17 @@ export default function AuthGate({ children }: AuthGateProps) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!auth) return;
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u);
+    if (!enabled) return;
+    const supabase = getSupabaseClient();
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null);
       setChecking(false);
     });
-    return () => unsub();
-  }, [auth]);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, [enabled]);
 
   if (!enabled) return <>{children}</>;
 
@@ -53,7 +56,7 @@ export default function AuthGate({ children }: AuthGateProps) {
       <div className="relative">
         <button
           type="button"
-          onClick={() => signOut(auth!)}
+          onClick={() => getSupabaseClient().auth.signOut()}
           className="no-print fixed bottom-4 right-4 z-50 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/90 border border-[#e2d3a8] shadow-sm text-slate-800 hover:bg-white"
           title="Logout"
         >
@@ -67,13 +70,14 @@ export default function AuthGate({ children }: AuthGateProps) {
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth) return;
-
     setSubmitting(true);
     setError('');
-
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
+      const { error: authError } = await getSupabaseClient().auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (authError) throw authError;
       try {
         localStorage.setItem(REMEMBER_EMAIL_KEY, email.trim());
       } catch {
@@ -135,7 +139,7 @@ export default function AuthGate({ children }: AuthGateProps) {
         </form>
 
         <div className="mt-4 text-xs text-slate-500">
-          Use the shared login. If you see an error, confirm Firebase Authentication (Email/Password) is enabled.
+          Use the shared login. If you see an error, confirm Supabase Authentication (Email) is enabled.
         </div>
       </div>
     </div>

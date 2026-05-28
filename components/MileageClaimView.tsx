@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Save, Loader2, Trash2, Plus, History, PanelLeft, Pencil, Printer, FileSpreadsheet } from 'lucide-react';
 import type { EmployeeInfo, MileageClaim, MileageClaimRow } from '../types';
-import { isFirebaseConfigured } from '../lib/firebase';
-import * as firebaseDb from '../lib/firebase-db';
+import { isSupabaseConfigured } from '../lib/supabase';
+import * as firebaseDb from '../lib/supabase-db';
 import { loadEmployees } from '../lib/employees';
 
 const MILEAGE_HISTORY_KEY = 'auditlink_mileage_claims_history';
@@ -144,7 +144,7 @@ const MileageClaimView: React.FC<MileageClaimViewProps> = ({
   }, [generateClaimNumber, history]);
 
   useEffect(() => {
-    if (isFirebaseConfigured()) {
+    if (isSupabaseConfigured()) {
       const unsub = firebaseDb.subscribeToMileageClaims((claims) => {
         setHistory(claims);
         if (!claimNumber) setClaimNumber(generateClaimNumber(claims, employee.claimDate));
@@ -202,7 +202,7 @@ const MileageClaimView: React.FC<MileageClaimViewProps> = ({
       updatedAt: timestamp,
     };
 
-    if (isFirebaseConfigured()) {
+    if (isSupabaseConfigured()) {
       try {
         // Strip undefined values (RTDB rejects them).
         const cleaned = JSON.parse(JSON.stringify(claimToSave)) as MileageClaim;
@@ -260,7 +260,7 @@ const MileageClaimView: React.FC<MileageClaimViewProps> = ({
   const deleteClaim = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (!confirm('Are you sure you want to delete this mileage claim?')) return;
-    if (isFirebaseConfigured()) {
+    if (isSupabaseConfigured()) {
       try {
         await firebaseDb.deleteMileageClaim(id);
         if (currentId === id) generateNewClaim(history.filter((h) => h.id !== id));

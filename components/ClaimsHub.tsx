@@ -6,8 +6,8 @@ import StaffBenefitClaimView from './StaffBenefitClaimView';
 import MedicalQuotaView from './MedicalQuotaView';
 import type { EmployeeInfo } from '../types';
 import type { StaffBenefitClaim } from '../types';
-import { isFirebaseConfigured } from '../lib/firebase';
-import * as firebaseDb from '../lib/firebase-db';
+import { isSupabaseConfigured } from '../lib/supabase';
+import * as firebaseDb from '../lib/supabase-db';
 
 type ClaimsTab = 'reimbursement' | 'mileage' | 'benefit' | 'quota';
 
@@ -24,7 +24,7 @@ const ClaimsHub: React.FC = () => {
   const [openMileageNumber, setOpenMileageNumber] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isFirebaseConfigured()) {
+    if (isSupabaseConfigured()) {
       const unsub = firebaseDb.subscribeToBenefitClaims((claims) => setBenefitHistory(claims));
       return () => unsub();
     }
