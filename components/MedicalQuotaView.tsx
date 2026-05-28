@@ -24,9 +24,13 @@ function formatMoney(n: number): string {
 
 const LEGACY_KEY = 'auditlink_medical_legacy_entries';
 
+function normalizeEmployeeName(name: string): string {
+  return String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) => {
-  const years = useMemo(() => listBenefitClaimYears(benefitHistory), [benefitHistory]);
-  const [year, setYear] = useState<number>(() => years[0] ?? new Date().getFullYear());
+  const benefitYears = useMemo(() => listBenefitClaimYears(benefitHistory), [benefitHistory]);
+  const [year, setYear] = useState<number>(() => benefitYears[0] ?? new Date().getFullYear());
   const [query, setQuery] = useState('');
   const [openEmployee, setOpenEmployee] = useState<string | null>(null);
   const [mode, setMode] = useState<'summary' | 'ledger'>('summary');
@@ -58,6 +62,17 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
     }
   }, []);
 
+  const years = useMemo(() => {
+    const allYears = new Set<number>(benefitYears);
+    for (const entry of legacy) {
+      const date = parseDateToISO(entry.date);
+      if (date) allYears.add(Number(date.slice(0, 4)));
+    }
+    const current = new Date().getFullYear();
+    allYears.add(current);
+    return Array.from(allYears).sort((a, b) => b - a);
+  }, [benefitYears, legacy]);
+
   const rows = useMemo(() => {
     const names = new Set<string>();
     for (const e of employees) {
@@ -66,6 +81,10 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
     }
     for (const v of medicalUsageMap.values()) {
       const n = (v?.employeeName || '').trim();
+      if (n) names.add(n);
+    }
+    for (const e of legacy) {
+      const n = (e?.employeeName || '').trim();
       if (n) names.add(n);
     }
 
@@ -78,13 +97,23 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
       const key = `${employeeName}::${year}`;
       const base = medicalUsageMap.get(key) || createEmptyMedicalUsageSummary(employeeName, year);
       const extra = legacy
-        .filter((e) => (e.employeeName || '').trim().toLowerCase() === employeeName.trim().toLowerCase())
-        .filter((e) => String(e.date || '').startsWith(String(year)));
+        .filter((e) => normalizeEmployeeName(e.employeeName) === normalizeEmployeeName(employeeName))
+        .filter((e) => (parseDateToISO(e.date) || '').startsWith(String(year)));
       if (!extra.length) return base;
       const add = extra.reduce((s, e) => s + (Number.isFinite(e.claimedAmount) ? e.claimedAmount : 0), 0);
       const used = base.used + add;
+      const entries = [
+        ...base.entries,
+        ...extra.map((e) => ({
+          claimId: e.id,
+          claimNumber: 'Imported',
+          date: parseDateToISO(e.date) || e.date || '',
+          amount: Number.isFinite(e.claimedAmount) ? e.claimedAmount : 0,
+          description: e.clinicName || 'Medical',
+        })),
+      ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
       const legacyLast = extra
-        .map((e) => String(e.date || '').trim())
+        .map((e) => parseDateToISO(e.date) || String(e.date || '').trim())
         .filter(Boolean)
         .sort()
         .at(-1);
@@ -92,6 +121,7 @@ const MedicalQuotaView: React.FC<MedicalQuotaViewProps> = ({ benefitHistory }) =
         ...base,
         used,
         remaining: Math.max(0, MEDICAL_YEARLY_QUOTA - used),
+        entries,
         lastUsedDate: legacyLast && (!base.lastUsedDate || legacyLast > base.lastUsedDate) ? legacyLast : base.lastUsedDate,
       };
     });

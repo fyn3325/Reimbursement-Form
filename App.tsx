@@ -4,6 +4,7 @@ import AuthGate from './components/AuthGate';
 import { ShieldCheck } from 'lucide-react';
 
 class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { message: string }> {
+  props!: { children: React.ReactNode };
   state = { message: '' };
 
   static getDerivedStateFromError(error: unknown) {
