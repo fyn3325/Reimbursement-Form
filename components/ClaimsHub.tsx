@@ -8,6 +8,7 @@ import type { EmployeeInfo } from '../types';
 import type { StaffBenefitClaim } from '../types';
 import { isSupabaseConfigured } from '../lib/supabase';
 import * as firebaseDb from '../lib/supabase-db';
+import { migrateLocalHistoryToSupabase } from '../lib/local-migration';
 
 type ClaimsTab = 'reimbursement' | 'mileage' | 'benefit' | 'quota';
 
@@ -25,6 +26,11 @@ const ClaimsHub: React.FC = () => {
 
   useEffect(() => {
     if (isSupabaseConfigured()) {
+      migrateLocalHistoryToSupabase()
+        .then((summary) => {
+          if (summary) console.info('Migrated local history to Supabase', summary);
+        })
+        .catch((error) => console.warn('Local history migration failed', error));
       const unsub = firebaseDb.subscribeToBenefitClaims((claims) => setBenefitHistory(claims));
       return () => unsub();
     }
