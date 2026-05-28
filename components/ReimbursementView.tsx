@@ -218,7 +218,7 @@ const SortableRow = memo<SortableRowProps>(function SortableRow(
 
 export interface ReimbursementViewProps {
   benefitHistory?: StaffBenefitClaim[];
-  onOpenBenefitClaim?: (id: string) => void;
+  onOpenBenefitClaim?: (claim: StaffBenefitClaim) => void;
 }
 
 const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = [], onOpenBenefitClaim }) => {
@@ -880,7 +880,8 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
                 if (c) loadClaim(c);
                 return;
               }
-              onOpenBenefitClaim?.(entry.id);
+              const c = (benefitHistory || []).find((h) => h.id === entry.id);
+              if (c) onOpenBenefitClaim?.(c);
             };
 
             return (

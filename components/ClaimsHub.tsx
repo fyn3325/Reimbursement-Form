@@ -20,7 +20,7 @@ const ClaimsHub: React.FC = () => {
     sourceMileageClaimNumber: string;
   } | null>(null);
   const [benefitHistory, setBenefitHistory] = useState<StaffBenefitClaim[]>([]);
-  const [openBenefitId, setOpenBenefitId] = useState<string | null>(null);
+  const [openBenefitClaim, setOpenBenefitClaim] = useState<StaffBenefitClaim | null>(null);
   const [openMileageNumber, setOpenMileageNumber] = useState<string | null>(null);
 
   useEffect(() => {
@@ -67,8 +67,8 @@ const ClaimsHub: React.FC = () => {
       {tab === 'reimbursement' && (
         <ReimbursementView
           benefitHistory={benefitHistory}
-          onOpenBenefitClaim={(id) => {
-            setOpenBenefitId(id);
+          onOpenBenefitClaim={(claim) => {
+            setOpenBenefitClaim(claim);
             setTab('benefit');
           }}
         />
@@ -77,8 +77,8 @@ const ClaimsHub: React.FC = () => {
         <StaffBenefitClaimView
           prefillFromMileage={benefitPrefill}
           onPrefillApplied={() => setBenefitPrefill(null)}
-          openClaimId={openBenefitId}
-          onOpenClaimConsumed={() => setOpenBenefitId(null)}
+          openClaim={openBenefitClaim}
+          onOpenClaimConsumed={() => setOpenBenefitClaim(null)}
           onOpenMileageClaimNumber={(n) => {
             setOpenMileageNumber(n);
             setTab('mileage');

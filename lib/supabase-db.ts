@@ -4,6 +4,10 @@ import type { MedicalLegacyEntry, MileageClaim, ReimbursementClaim, StaffBenefit
 export type PaidClaimsMap = Record<string, { paidAt: string }>;
 type Unsubscribe = () => void;
 
+function uniqueChannelName(table: string): string {
+  return `${table}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
+
 // ── Reimbursement Claims ───────────────────────────────────────
 
 function mapClaim(row: any): ReimbursementClaim {
@@ -56,7 +60,7 @@ export function subscribeToClaims(callback: (claims: ReimbursementClaim[]) => vo
   };
   refetch();
   const channel = supabase
-    .channel('reimbursement_claims')
+    .channel(uniqueChannelName('reimbursement_claims'))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'reimbursement_claims' }, refetch)
     .subscribe();
   return () => { supabase.removeChannel(channel); };
@@ -96,7 +100,7 @@ export function subscribeToMileageClaims(callback: (claims: MileageClaim[]) => v
   };
   refetch();
   const channel = supabase
-    .channel('mileage_claims')
+    .channel(uniqueChannelName('mileage_claims'))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'mileage_claims' }, refetch)
     .subscribe();
   return () => { supabase.removeChannel(channel); };
@@ -135,7 +139,7 @@ export function subscribeToBenefitClaims(callback: (claims: StaffBenefitClaim[])
   };
   refetch();
   const channel = supabase
-    .channel('benefit_claims')
+    .channel(uniqueChannelName('benefit_claims'))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'benefit_claims' }, refetch)
     .subscribe();
   return () => { supabase.removeChannel(channel); };
@@ -176,7 +180,7 @@ export function subscribeToMedicalLegacy(callback: (entries: MedicalLegacyEntry[
   };
   refetch();
   const channel = supabase
-    .channel('medical_legacy')
+    .channel(uniqueChannelName('medical_legacy'))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'medical_legacy' }, refetch)
     .subscribe();
   return () => { supabase.removeChannel(channel); };
@@ -212,7 +216,7 @@ export function subscribeToPaidClaims(callback: (paidClaims: PaidClaimsMap) => v
   };
   refetch();
   const channel = supabase
-    .channel('paid_claims')
+    .channel(uniqueChannelName('paid_claims'))
     .on('postgres_changes', { event: '*', schema: 'public', table: 'paid_claims' }, refetch)
     .subscribe();
   return () => { supabase.removeChannel(channel); };

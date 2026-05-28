@@ -201,7 +201,7 @@ export interface StaffBenefitClaimViewProps {
     currency: string;
     sourceMileageClaimNumber: string;
   } | null;
-  openClaimId?: string | null;
+  openClaim?: StaffBenefitClaim | null;
   onOpenClaimConsumed?: () => void;
   onSaved?: (claim: StaffBenefitClaim) => void;
   onOpenMileageClaimNumber?: (claimNumber: string) => void;
@@ -211,7 +211,7 @@ export interface StaffBenefitClaimViewProps {
 
 const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
   prefillFromMileage,
-  openClaimId,
+  openClaim,
   onOpenClaimConsumed,
   onSaved,
   onOpenMileageClaimNumber,
@@ -563,13 +563,11 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
   };
 
   useEffect(() => {
-    if (!openClaimId) return;
-    const target = history.find((h) => h.id === openClaimId);
-    if (!target) return;
-    loadClaim(target);
+    if (!openClaim) return;
+    loadClaim(openClaim);
     onOpenClaimConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [history, openClaimId]);
+  }, [openClaim]);
 
   const deleteClaim = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();

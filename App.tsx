@@ -3,6 +3,28 @@ import ClaimsHub from './components/ClaimsHub';
 import AuthGate from './components/AuthGate';
 import { ShieldCheck } from 'lucide-react';
 
+class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, { message: string }> {
+  state = { message: '' };
+
+  static getDerivedStateFromError(error: unknown) {
+    return { message: error instanceof Error ? error.message : 'Unexpected app error' };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error('App render failed', error);
+  }
+
+  render() {
+    if (!this.state.message) return this.props.children;
+    return (
+      <div className="bg-white border border-red-200 rounded-xl p-6 text-red-700">
+        <div className="font-bold">Something went wrong</div>
+        <div className="text-sm mt-2">{this.state.message}</div>
+      </div>
+    );
+  }
+}
+
 const App: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-pink-50 font-sans print:bg-white">
@@ -36,7 +58,7 @@ const App: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-[1600px] mx-auto w-full p-4 sm:p-6 print:p-0 print:max-w-none">
-          <AuthGate><ClaimsHub /></AuthGate>
+          <AppErrorBoundary><AuthGate><ClaimsHub /></AuthGate></AppErrorBoundary>
       </main>
     </div>
   );
