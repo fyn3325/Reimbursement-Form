@@ -6,6 +6,8 @@ import * as firebaseDb from '../lib/supabase-db';
 import { loadEmployees } from '../lib/employees';
 import { uploadBenefitReceiptFile } from '../lib/supabase-storage';
 import { computeMedicalUsage, MEDICAL_ITEM_MAX, MEDICAL_YEARLY_QUOTA, sumMedicalItems } from '../lib/quota';
+import BranchSelect from './BranchSelect';
+import { usePaidClaims } from '../lib/usePaidClaims';
 
 const BENEFIT_HISTORY_KEY = 'auditlink_benefit_claims_history';
 const MEDICAL_LEGACY_KEY = 'auditlink_medical_legacy_entries';
@@ -230,6 +232,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
   const ADD_NEW_EMPLOYEE = '__ADD_NEW__';
   const [isManualEmployee, setIsManualEmployee] = useState(false);
   const [benefitTypes, setBenefitTypes] = useState<string[]>(() => DEFAULT_BENEFIT_TYPES);
+  const { paidClaims, togglePaid, setPaidDate } = usePaidClaims();
 
   const allEmployees = loadEmployees();
 
@@ -633,6 +636,9 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
           history.map((c) => {
             const claimItems = c.items || [];
             const total = claimItems.reduce((s, i) => s + numberOrZero(i.amount), 0);
+            const paidKey = `benefit:${c.id}`;
+            const isPaid = !!paidClaims[paidKey];
+            const paidAt = paidClaims[paidKey]?.paidAt || '';
             return (
               <div
                 key={c.id}
@@ -651,6 +657,42 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                     <div className="text-xs font-mono font-bold text-gray-700">{total.toFixed(2)}</div>
                     <div className="text-[10px] text-gray-400">{claimItems.length} items</div>
                   </div>
+                </div>
+                <div className="mt-2 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      togglePaid(paidKey);
+                    }}
+                    className={`text-[11px] font-semibold px-2 py-1 rounded-md border ${
+                      isPaid
+                        ? 'bg-gray-900 text-white border-gray-900'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                    }`}
+                    title={isPaid ? `Paid (${paidAt})` : 'Mark as paid'}
+                  >
+                    {isPaid ? `Paid ${paidAt}` : 'Paid'}
+                  </button>
+                  {isPaid && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const next = window.prompt('Paid date (YYYY-MM-DD)', paidAt || new Date().toISOString().slice(0, 10));
+                        if (!next) return;
+                        if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) {
+                          alert('Please use YYYY-MM-DD');
+                          return;
+                        }
+                        setPaidDate(paidKey, next);
+                      }}
+                      className="px-2 py-1 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                      title="Edit paid date"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
                 <div className="absolute right-2 top-2 flex gap-1 opacity-0 hover:opacity-100 transition-opacity">
                   <button
@@ -869,19 +911,10 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
             <div className="flex flex-col">
               <label className="text-xs font-bold text-gray-500 uppercase">Branch</label>
               <div className="relative">
-                <select
+                <BranchSelect
                   value={employee.branch}
-                  onChange={(e) => setEmployee({ ...employee, branch: e.target.value })}
-                  className="w-full border-b border-gray-300 py-1 focus:outline-none focus:border-pink-600 font-medium bg-transparent appearance-none"
-                >
-                  <option value="" disabled>
-                    Select Branch
-                  </option>
-                  <option value="HQ">HQ</option>
-                  <option value="PBJ">PBJ</option>
-                  <option value="MVJB">MVJB</option>
-                  <option value="IOI">IOI</option>
-                </select>
+                  onChange={(branch) => setEmployee({ ...employee, branch })}
+                />
               </div>
             </div>
           </div>

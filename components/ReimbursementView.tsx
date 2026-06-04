@@ -61,6 +61,8 @@ async function processReceiptViaApi(base64Image: string, mimeType: string): Prom
 }
 import { EMPLOYEES_LIST } from '../constants';
 import { compressImage, FILE_TOO_LARGE_MESSAGE } from '../utils/imageCompress';
+import BranchSelect from './BranchSelect';
+import { usePaidClaims } from '../lib/usePaidClaims';
 
 const ADD_CUSTOM_VALUE = '__add_custom__';
 const CURRENCIES_LIST = ['MYR', 'CNY', 'USD', 'SGD', 'EUR', 'GBP', 'AUD', 'JPY', 'THB', 'IDR'];
@@ -240,63 +242,7 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
   const [items, setItems] = useState<ClaimItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
-  const PAID_CLAIMS_KEY = 'paidClaims:v1';
-  const [paidClaims, setPaidClaims] = useState<Record<string, { paidAt: string }>>(() => {
-    try {
-      const saved = localStorage.getItem(PAID_CLAIMS_KEY);
-      return saved ? JSON.parse(saved) : {};
-    } catch {
-      return {};
-    }
-  });
-  const paidClaimsSeededRef = useRef(false);
-  const paidClaimsLocalSeedRef = useRef<Record<string, { paidAt: string }>>(paidClaims);
-  const togglePaid = (paidKey: string) => {
-    const [kind, id] = paidKey.split(':');
-    setPaidClaims((prev) => {
-      const next = { ...prev };
-      if (next[paidKey]) {
-        delete next[paidKey];
-        if (isSupabaseConfigured() && kind && id) {
-          firebaseDb.removePaidClaim(kind, id).catch(() => {
-            // ignore
-          });
-        }
-      } else {
-        const paidAt = new Date().toISOString().slice(0, 10);
-        next[paidKey] = { paidAt };
-        if (isSupabaseConfigured() && kind && id) {
-          firebaseDb.setPaidClaim(kind, id, paidAt).catch(() => {
-            // ignore
-          });
-        }
-      }
-      try {
-        localStorage.setItem(PAID_CLAIMS_KEY, JSON.stringify(next));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  };
-
-  const setPaidDate = (paidKey: string, paidAt: string) => {
-    const [kind, id] = paidKey.split(':');
-    setPaidClaims((prev) => {
-      const next = { ...prev, [paidKey]: { paidAt } };
-      if (isSupabaseConfigured() && kind && id) {
-        firebaseDb.setPaidClaim(kind, id, paidAt).catch(() => {
-          // ignore
-        });
-      }
-      try {
-        localStorage.setItem(PAID_CLAIMS_KEY, JSON.stringify(next));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  };
+  const { paidClaims, togglePaid, setPaidDate } = usePaidClaims();
   const ADD_NEW_EMPLOYEE = '__ADD_NEW__';
   const [isManualEmployee, setIsManualEmployee] = useState(false);
   const [presetCategories, setPresetCategories] = useState<string[]>(() => {
@@ -366,35 +312,6 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
       setHistory(loadedHistory);
       generateNewClaim(loadedHistory);
     }
-  }, []);
-
-  useEffect(() => {
-    if (!isSupabaseConfigured()) return;
-    const unsub = firebaseDb.subscribeToPaidClaims((remote) => {
-      if (!paidClaimsSeededRef.current) {
-        paidClaimsSeededRef.current = true;
-        const local: Record<string, { paidAt: string }> = paidClaimsLocalSeedRef.current || {};
-        if (Object.keys(remote).length === 0 && Object.keys(local).length > 0) {
-          Object.entries(local).forEach(([paidKey, val]) => {
-            const [kind, id] = paidKey.split(':');
-            if (!kind || !id) return;
-            const paidAt = val?.paidAt;
-            if (!paidAt) return;
-            firebaseDb.setPaidClaim(kind, id, paidAt).catch(() => {
-              // ignore
-            });
-          });
-          return;
-        }
-      }
-      setPaidClaims(remote);
-      try {
-        localStorage.setItem(PAID_CLAIMS_KEY, JSON.stringify(remote));
-      } catch {
-        // ignore
-      }
-    });
-    return () => unsub();
   }, []);
 
   // --- Logic ---
@@ -1173,17 +1090,10 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
                <div className="flex flex-col">
                 <label className="text-xs font-bold text-gray-500 uppercase">Branch</label>
                 <div className="relative">
-                  <select 
+                  <BranchSelect
                     value={employee.branch}
-                    onChange={e => setEmployee({...employee, branch: e.target.value})}
-                    className="w-full border-b border-gray-300 py-1 focus:outline-none focus:border-pink-600 font-medium bg-transparent appearance-none"
-                  >
-                    <option value="" disabled>Select Branch</option>
-                    <option value="HQ">HQ</option>
-                    <option value="PBJ">PBJ</option>
-                    <option value="MVJB">MVJB</option>
-                    <option value="IOI">IOI</option>
-                  </select>
+                    onChange={branch => setEmployee({...employee, branch})}
+                  />
                 </div>
               </div>
             </div>
