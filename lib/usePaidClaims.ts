@@ -108,5 +108,44 @@ export function usePaidClaims() {
     });
   };
 
-  return { paidClaims, togglePaid, setPaidDate };
+  const markPaidClaims = (paidKeys: string[], paidAt: string) => {
+    const uniquePaidKeys = Array.from(new Set(paidKeys)).filter(Boolean);
+    if (uniquePaidKeys.length === 0) return;
+
+    setPaidClaims((prev) => {
+      const next = { ...prev };
+      for (const paidKey of uniquePaidKeys) {
+        const [kind, id] = paidKey.split(':');
+        next[paidKey] = { paidAt };
+        if (isSupabaseConfigured() && kind && id) {
+          firebaseDb.setPaidClaim(kind, id, paidAt).catch(() => {
+            // ignore
+          });
+        }
+      }
+
+      saveLocalPaidClaims(next);
+      return next;
+    });
+  };
+
+  const unmarkPaidClaim = (paidKey: string) => {
+    const [kind, id] = paidKey.split(':');
+    setPaidClaims((prev) => {
+      if (!prev[paidKey]) return prev;
+
+      const next = { ...prev };
+      delete next[paidKey];
+      if (isSupabaseConfigured() && kind && id) {
+        firebaseDb.removePaidClaim(kind, id).catch(() => {
+          // ignore
+        });
+      }
+
+      saveLocalPaidClaims(next);
+      return next;
+    });
+  };
+
+  return { paidClaims, togglePaid, setPaidDate, markPaidClaims, unmarkPaidClaim };
 }

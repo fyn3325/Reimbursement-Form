@@ -64,6 +64,7 @@ import { compressImage, FILE_TOO_LARGE_MESSAGE } from '../utils/imageCompress';
 import BranchSelect from './BranchSelect';
 import { usePaidClaims } from '../lib/usePaidClaims';
 import HistorySearchInput from './HistorySearchInput';
+import AdminDeleteDialog from './AdminDeleteDialog';
 
 const ADD_CUSTOM_VALUE = '__add_custom__';
 const CURRENCIES_LIST = ['MYR', 'CNY', 'USD', 'SGD', 'EUR', 'GBP', 'AUD', 'JPY', 'THB', 'IDR'];
@@ -244,7 +245,9 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
   const [isProcessing, setIsProcessing] = useState(false);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [historySearchTerm, setHistorySearchTerm] = useState('');
-  const { paidClaims, togglePaid, setPaidDate } = usePaidClaims();
+  const [selectedPaidKeys, setSelectedPaidKeys] = useState<Set<string>>(() => new Set());
+  const [pendingDeleteClaimId, setPendingDeleteClaimId] = useState<string | null>(null);
+  const { paidClaims, setPaidDate, markPaidClaims, unmarkPaidClaim } = usePaidClaims();
   const ADD_NEW_EMPLOYEE = '__ADD_NEW__';
   const [isManualEmployee, setIsManualEmployee] = useState(false);
   const [presetCategories, setPresetCategories] = useState<string[]>(() => {
@@ -449,21 +452,42 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
     setItems(claim.items || []);
   };
 
-  const deleteClaim = async (e: React.MouseEvent, id: string) => {
+  const deleteClaim = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this claim?')) return;
+    setPendingDeleteClaimId(id);
+  };
+
+  const confirmDeleteClaim = async () => {
+    const id = pendingDeleteClaimId;
+    if (!id) return;
+
+    const newHistory = history.filter(h => h.id !== id);
     if (isSupabaseConfigured()) {
       try {
         await firebaseDb.deleteClaim(id);
-        if (currentId === id) generateNewClaim(history.filter(h => h.id !== id));
+        setHistory(newHistory);
+        unmarkPaidClaim(`reimbursement:${id}`);
+        setSelectedPaidKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(`reimbursement:${id}`);
+          return next;
+        });
+        setPendingDeleteClaimId(null);
+        if (currentId === id) generateNewClaim(newHistory);
       } catch (err) {
         console.error('Delete failed', err);
         alert('Failed to delete. Please try again.');
       }
     } else {
-      const newHistory = history.filter(h => h.id !== id);
       setHistory(newHistory);
+      unmarkPaidClaim(`reimbursement:${id}`);
+      setSelectedPaidKeys((prev) => {
+        const next = new Set(prev);
+        next.delete(`reimbursement:${id}`);
+        return next;
+      });
       localStorage.setItem(CLAIMS_HISTORY_KEY, JSON.stringify(newHistory));
+      setPendingDeleteClaimId(null);
       if (currentId === id) generateNewClaim(newHistory);
     }
   };
@@ -725,8 +749,41 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
     });
   }, []);
 
+  const togglePaidSelection = useCallback((paidKey: string) => {
+    setSelectedPaidKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(paidKey)) {
+        next.delete(paidKey);
+      } else {
+        next.add(paidKey);
+      }
+      return next;
+    });
+  }, []);
+
+  const markSelectedPaid = useCallback((scrollContainer: HTMLDivElement | null) => {
+    const keys = Array.from(selectedPaidKeys).filter((paidKey) => !paidClaims[paidKey]);
+    if (keys.length === 0) return;
+
+    const paidAt = window.prompt('Paid date (YYYY-MM-DD)', new Date().toISOString().slice(0, 10));
+    if (!paidAt) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(paidAt)) {
+      alert('Please use YYYY-MM-DD');
+      return;
+    }
+
+    preserveHistoryScroll(scrollContainer, () => {
+      markPaidClaims(keys, paidAt);
+      setSelectedPaidKeys((prev) => {
+        const next = new Set(prev);
+        keys.forEach((key) => next.delete(key));
+        return next;
+      });
+    });
+  }, [markPaidClaims, paidClaims, preserveHistoryScroll, selectedPaidKeys]);
+
   const HistorySidebar = useCallback(() => (
-    <div className="w-full h-full flex flex-col bg-white overflow-hidden">
+    <div data-history-root className="w-full h-full flex flex-col bg-white overflow-hidden">
       <div className="p-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
         <div className="flex items-center gap-2 text-gray-700 font-semibold">
           <History className="w-4 h-4" />
@@ -759,6 +816,19 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
             placeholder="Search employee or claim no."
           />
         </div>
+        {selectedPaidKeys.size > 0 && (
+          <button
+            type="button"
+            onClick={(e) => {
+              const root = e.currentTarget.closest('[data-history-root]');
+              const scrollContainer = root?.querySelector('[data-history-scroll]') as HTMLDivElement | null;
+              markSelectedPaid(scrollContainer);
+            }}
+            className="mt-2 w-full rounded-lg bg-gray-900 px-3 py-2 text-xs font-semibold text-white hover:bg-gray-800"
+          >
+            Paid Selected ({selectedPaidKeys.size})
+          </button>
+        )}
       </div>
 
       <div data-history-scroll className="flex-1 min-h-0 overflow-y-auto">
@@ -823,6 +893,7 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
             const paidKey = `${entry.kind}:${entry.id}`;
             const isPaid = !!paidClaims[paidKey];
             const paidAt = paidClaims[paidKey]?.paidAt || '';
+            const isSelectedForPaid = selectedPaidKeys.has(paidKey);
             const active = currentId === entry.id && entry.kind === 'reimbursement';
 
             const onClick = () => {
@@ -849,24 +920,27 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
                 <div className="absolute right-2 top-2 flex items-center gap-1">
                   <button
                     type="button"
+                    disabled={isPaid}
                     onClick={(e) => {
                       e.stopPropagation();
                       const scrollContainer = e.currentTarget.closest('[data-history-scroll]') as HTMLDivElement | null;
-                      preserveHistoryScroll(scrollContainer, () => togglePaid(paidKey));
+                      preserveHistoryScroll(scrollContainer, () => togglePaidSelection(paidKey));
                     }}
                     className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md border ${
                       isPaid
                         ? 'bg-gray-900 text-white border-gray-900'
+                        : isSelectedForPaid
+                          ? 'bg-pink-50 text-pink-700 border-pink-300'
                         : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                     }`}
-                    title={isPaid ? `Paid (${paidAt})` : 'Mark as paid'}
+                    title={isPaid ? `Paid (${paidAt})` : 'Select for bulk paid'}
                   >
                     <span className={`flex h-3.5 w-3.5 items-center justify-center rounded border ${
-                      isPaid ? 'border-white bg-white text-gray-900' : 'border-gray-300 bg-white'
+                      isPaid ? 'border-white bg-white text-gray-900' : isSelectedForPaid ? 'border-pink-600 bg-pink-600 text-white' : 'border-gray-300 bg-white'
                     }`}>
-                      {isPaid && <Check className="h-2.5 w-2.5" />}
+                      {(isPaid || isSelectedForPaid) && <Check className="h-2.5 w-2.5" />}
                     </span>
-                    {isPaid ? `Paid ${paidAt}` : 'Paid'}
+                    {isPaid ? `Paid ${paidAt}` : 'Select'}
                   </button>
 
                   {isPaid && (
@@ -887,6 +961,16 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
                       title="Edit paid date"
                     >
                       <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {entry.kind === 'reimbursement' && (
+                    <button
+                      type="button"
+                      onClick={(e) => deleteClaim(e, entry.id)}
+                      className="px-2 py-1 rounded-md border border-red-200 bg-white text-red-600 hover:bg-red-50"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
@@ -919,12 +1003,19 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
       </div>
     </div>
 
-  ), [history, benefitHistory, historySearchTerm, paidClaims, currentId, loadClaim, onOpenBenefitClaim, setShowHistoryDrawer, generateNewClaim, togglePaid, setPaidDate, preserveHistoryScroll]);
+  ), [history, benefitHistory, historySearchTerm, paidClaims, selectedPaidKeys, currentId, loadClaim, onOpenBenefitClaim, setShowHistoryDrawer, generateNewClaim, setPaidDate, preserveHistoryScroll, togglePaidSelection, markSelectedPaid, unmarkPaidClaim]);
 
 
 
   return (
     <div className="flex flex-col md:flex-row md:items-start gap-4 md:gap-6">
+      <AdminDeleteDialog
+        open={!!pendingDeleteClaimId}
+        title="Delete claim?"
+        message="This will permanently delete this reimbursement claim. Enter admin password to continue."
+        onCancel={() => setPendingDeleteClaimId(null)}
+        onConfirm={confirmDeleteClaim}
+      />
       
       {/* MOBILE: History drawer overlay */}
       {showHistoryDrawer && (
