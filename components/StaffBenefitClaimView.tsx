@@ -8,6 +8,7 @@ import { uploadBenefitReceiptFile } from '../lib/supabase-storage';
 import { computeMedicalUsage, MEDICAL_ITEM_MAX, MEDICAL_YEARLY_QUOTA, sumMedicalItems } from '../lib/quota';
 import BranchSelect from './BranchSelect';
 import { usePaidClaims } from '../lib/usePaidClaims';
+import HistorySearchInput from './HistorySearchInput';
 
 const BENEFIT_HISTORY_KEY = 'auditlink_benefit_claims_history';
 const MEDICAL_LEGACY_KEY = 'auditlink_medical_legacy_entries';
@@ -228,6 +229,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
   const [items, setItems] = useState<BenefitClaimItem[]>(() => [createEmptyItem()]);
   const [isSaving, setIsSaving] = useState(false);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+  const [historySearchTerm, setHistorySearchTerm] = useState('');
   const [viewer, setViewer] = useState<{ url: string; title: string } | null>(null);
   const ADD_NEW_EMPLOYEE = '__ADD_NEW__';
   const [isManualEmployee, setIsManualEmployee] = useState(false);
@@ -629,11 +631,24 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
           New
         </button>
       </div>
+      <div className="mb-3">
+        <HistorySearchInput
+          value={historySearchTerm}
+          onChange={setHistorySearchTerm}
+          placeholder="Search employee or claim no."
+        />
+      </div>
       <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
         {history.length === 0 ? (
           <div className="text-xs text-gray-500">No staff benefit claims yet.</div>
         ) : (
-          history.map((c) => {
+          history
+            .filter((claim) => {
+              const searchTerm = historySearchTerm.trim().toLowerCase();
+              if (!searchTerm) return true;
+              return `${claim.employee?.name || ''} ${claim.claimNumber}`.toLowerCase().includes(searchTerm);
+            })
+            .map((c) => {
             const claimItems = c.items || [];
             const total = claimItems.reduce((s, i) => s + numberOrZero(i.amount), 0);
             const paidKey = `benefit:${c.id}`;
@@ -717,6 +732,15 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
             );
           })
         )}
+        {history.length > 0 &&
+          historySearchTerm.trim() &&
+          !history.some((claim) =>
+            `${claim.employee?.name || ''} ${claim.claimNumber}`
+              .toLowerCase()
+              .includes(historySearchTerm.trim().toLowerCase())
+          ) && (
+            <div className="text-xs text-gray-500">No matching staff benefit claims.</div>
+          )}
       </div>
     </div>
   );

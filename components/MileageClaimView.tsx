@@ -6,6 +6,7 @@ import * as firebaseDb from '../lib/supabase-db';
 import { loadEmployees } from '../lib/employees';
 import BranchSelect from './BranchSelect';
 import { usePaidClaims } from '../lib/usePaidClaims';
+import HistorySearchInput from './HistorySearchInput';
 
 const MILEAGE_HISTORY_KEY = 'auditlink_mileage_claims_history';
 
@@ -113,6 +114,7 @@ const MileageClaimView: React.FC<MileageClaimViewProps> = ({
   const [currency, setCurrency] = useState<string>('MYR');
   const [isSaving, setIsSaving] = useState(false);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+  const [historySearchTerm, setHistorySearchTerm] = useState('');
   const ADD_NEW_EMPLOYEE = '__ADD_NEW__';
   const [isManualEmployee, setIsManualEmployee] = useState(false);
   const { paidClaims, togglePaid, setPaidDate } = usePaidClaims();
@@ -318,11 +320,24 @@ const MileageClaimView: React.FC<MileageClaimViewProps> = ({
           New
         </button>
       </div>
+      <div className="mb-3">
+        <HistorySearchInput
+          value={historySearchTerm}
+          onChange={setHistorySearchTerm}
+          placeholder="Search employee or claim no."
+        />
+      </div>
       <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
         {history.length === 0 ? (
           <div className="text-xs text-gray-500">No mileage claims yet.</div>
         ) : (
-          history.map((c) => {
+          history
+            .filter((claim) => {
+              const searchTerm = historySearchTerm.trim().toLowerCase();
+              if (!searchTerm) return true;
+              return `${claim.employee?.name || ''} ${claim.claimNumber}`.toLowerCase().includes(searchTerm);
+            })
+            .map((c) => {
             const claimRows = c.rows || [];
             const total = claimRows.reduce((s, r) => s + calcRowAmount(r), 0);
             const paidKey = `mileage:${c.id}`;
@@ -406,6 +421,15 @@ const MileageClaimView: React.FC<MileageClaimViewProps> = ({
             );
           })
         )}
+        {history.length > 0 &&
+          historySearchTerm.trim() &&
+          !history.some((claim) =>
+            `${claim.employee?.name || ''} ${claim.claimNumber}`
+              .toLowerCase()
+              .includes(historySearchTerm.trim().toLowerCase())
+          ) && (
+            <div className="text-xs text-gray-500">No matching mileage claims.</div>
+          )}
       </div>
     </div>
   );

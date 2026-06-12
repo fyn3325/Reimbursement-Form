@@ -63,6 +63,7 @@ import { EMPLOYEES_LIST } from '../constants';
 import { compressImage, FILE_TOO_LARGE_MESSAGE } from '../utils/imageCompress';
 import BranchSelect from './BranchSelect';
 import { usePaidClaims } from '../lib/usePaidClaims';
+import HistorySearchInput from './HistorySearchInput';
 
 const ADD_CUSTOM_VALUE = '__add_custom__';
 const CURRENCIES_LIST = ['MYR', 'CNY', 'USD', 'SGD', 'EUR', 'GBP', 'AUD', 'JPY', 'THB', 'IDR'];
@@ -242,6 +243,7 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
   const [items, setItems] = useState<ClaimItem[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+  const [historySearchTerm, setHistorySearchTerm] = useState('');
   const { paidClaims, togglePaid, setPaidDate } = usePaidClaims();
   const ADD_NEW_EMPLOYEE = '__ADD_NEW__';
   const [isManualEmployee, setIsManualEmployee] = useState(false);
@@ -742,6 +744,13 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
           <PlusCircle className="w-4 h-4" />
           New Claim
         </button>
+        <div className="mt-3">
+          <HistorySearchInput
+            value={historySearchTerm}
+            onChange={setHistorySearchTerm}
+            placeholder="Search employee or claim no."
+          />
+        </div>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto">
@@ -785,7 +794,24 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
             return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
           });
 
-          return combined.map((entry) => {
+          const searchTerm = historySearchTerm.trim().toLowerCase();
+          const filtered = searchTerm
+            ? combined.filter((entry) =>
+                `${entry.employeeName} ${entry.claimNumber}`.toLowerCase().includes(searchTerm)
+              )
+            : combined;
+
+          if (combined.length === 0) return null;
+
+          if (filtered.length === 0) {
+            return (
+              <div className="p-6 text-center text-gray-400 text-sm">
+                No matching claims
+              </div>
+            );
+          }
+
+          return filtered.map((entry) => {
             const paidKey = `${entry.kind}:${entry.id}`;
             const isPaid = !!paidClaims[paidKey];
             const paidAt = paidClaims[paidKey]?.paidAt || '';
@@ -878,7 +904,7 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
       </div>
     </div>
 
-  ), [history, benefitHistory, paidClaims, currentId, loadClaim, onOpenBenefitClaim, setShowHistoryDrawer, generateNewClaim, togglePaid, setPaidDate]);
+  ), [history, benefitHistory, historySearchTerm, paidClaims, currentId, loadClaim, onOpenBenefitClaim, setShowHistoryDrawer, generateNewClaim, togglePaid, setPaidDate]);
 
 
 
