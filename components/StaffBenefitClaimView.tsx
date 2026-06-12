@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Save, Loader2, Trash2, Plus, History, PanelLeft, Pencil, Printer, FileSpreadsheet, X } from 'lucide-react';
+import { Save, Loader2, Trash2, Plus, History, PanelLeft, Pencil, Printer, FileSpreadsheet, X, Check } from 'lucide-react';
 import type { BenefitClaimItem, EmployeeInfo, MedicalLegacyEntry, StaffBenefitClaim } from '../types';
 import { isSupabaseConfigured } from '../lib/supabase';
 import * as firebaseDb from '../lib/supabase-db';
@@ -614,6 +614,14 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
     downloadTextFile(`${claimNumber}.csv`, [meta, header.join(','), ...lines].join('\n'));
   };
 
+  const preserveHistoryScroll = (scrollContainer: HTMLDivElement | null, action: () => void) => {
+    const scrollTop = scrollContainer?.scrollTop ?? 0;
+    action();
+    requestAnimationFrame(() => {
+      if (scrollContainer) scrollContainer.scrollTop = scrollTop;
+    });
+  };
+
   const HistorySidebar = () => (
     <div className="p-3">
       <div className="flex items-center justify-between mb-2">
@@ -638,7 +646,7 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
           placeholder="Search employee or claim no."
         />
       </div>
-      <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
+      <div data-history-scroll className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
         {history.length === 0 ? (
           <div className="text-xs text-gray-500">No staff benefit claims yet.</div>
         ) : (
@@ -678,15 +686,21 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      togglePaid(paidKey);
+                      const scrollContainer = e.currentTarget.closest('[data-history-scroll]') as HTMLDivElement | null;
+                      preserveHistoryScroll(scrollContainer, () => togglePaid(paidKey));
                     }}
-                    className={`text-[11px] font-semibold px-2 py-1 rounded-md border ${
+                    className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md border ${
                       isPaid
                         ? 'bg-gray-900 text-white border-gray-900'
                         : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                     }`}
                     title={isPaid ? `Paid (${paidAt})` : 'Mark as paid'}
                   >
+                    <span className={`flex h-3.5 w-3.5 items-center justify-center rounded border ${
+                      isPaid ? 'border-white bg-white text-gray-900' : 'border-gray-300 bg-white'
+                    }`}>
+                      {isPaid && <Check className="h-2.5 w-2.5" />}
+                    </span>
                     {isPaid ? `Paid ${paidAt}` : 'Paid'}
                   </button>
                   {isPaid && (
@@ -694,13 +708,14 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
+                        const scrollContainer = e.currentTarget.closest('[data-history-scroll]') as HTMLDivElement | null;
                         const next = window.prompt('Paid date (YYYY-MM-DD)', paidAt || new Date().toISOString().slice(0, 10));
                         if (!next) return;
                         if (!/^\d{4}-\d{2}-\d{2}$/.test(next)) {
                           alert('Please use YYYY-MM-DD');
                           return;
                         }
-                        setPaidDate(paidKey, next);
+                        preserveHistoryScroll(scrollContainer, () => setPaidDate(paidKey, next));
                       }}
                       className="px-2 py-1 rounded-md border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
                       title="Edit paid date"
@@ -793,13 +808,13 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
       )}
       {showHistoryDrawer && (
         <div className="fixed left-0 top-0 bottom-0 w-72 max-w-[85vw] z-50 md:hidden shadow-xl bg-white">
-          <HistorySidebar />
+          {HistorySidebar()}
         </div>
       )}
 
       <div className="hidden md:block w-64 shrink-0 no-print self-start sticky top-24">
         <div className="w-64 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden max-h-[calc(100vh-7rem)] flex flex-col">
-          <HistorySidebar />
+          {HistorySidebar()}
         </div>
       </div>
 
