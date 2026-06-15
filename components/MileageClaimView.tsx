@@ -209,21 +209,22 @@ const MileageClaimView: React.FC<MileageClaimViewProps> = ({
       currency,
       updatedAt: timestamp,
     };
+    const newHistory = history.some((h) => h.id === savedId)
+      ? history.map((h) => (h.id === savedId ? claimToSave : h))
+      : [claimToSave, ...history];
 
     if (isSupabaseConfigured()) {
       try {
         // Strip undefined values (RTDB rejects them).
         const cleaned = JSON.parse(JSON.stringify(claimToSave)) as MileageClaim;
         await firebaseDb.saveMileageClaim(cleaned);
+        setHistory(newHistory);
         setCurrentId(savedId);
         alert('Mileage Claim Saved/Amended Successfully');
       } catch (err) {
         console.error('Save mileage claim failed', err);
         // Fallback to local save so user doesn't lose work.
         try {
-          const newHistory = currentId
-            ? history.map((h) => (h.id === currentId ? claimToSave : h))
-            : [claimToSave, ...history];
           setHistory(newHistory);
           localStorage.setItem(MILEAGE_HISTORY_KEY, JSON.stringify(newHistory));
         } catch {}
@@ -234,9 +235,6 @@ const MileageClaimView: React.FC<MileageClaimViewProps> = ({
       return;
     }
 
-    const newHistory = currentId
-      ? history.map((h) => (h.id === currentId ? claimToSave : h))
-      : [claimToSave, ...history];
     setHistory(newHistory);
     setCurrentId(savedId);
     localStorage.setItem(MILEAGE_HISTORY_KEY, JSON.stringify(newHistory));

@@ -406,10 +406,14 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
       items: itemsToSave,
       updatedAt: timestamp
     };
+    const newHistory = history.some((h) => h.id === savedId)
+      ? history.map((h) => (h.id === savedId ? claimToSave : h))
+      : [claimToSave, ...history];
 
     if (isSupabaseConfigured()) {
       try {
         await firebaseDb.saveClaim(claimToSave);
+        setHistory(newHistory);
         setCurrentId(savedId);
         alert('Claim Saved/Amended Successfully');
       } catch (err) {
@@ -419,9 +423,6 @@ const ReimbursementView: React.FC<ReimbursementViewProps> = ({ benefitHistory = 
         setIsSaving(false);
       }
     } else {
-      let newHistory = currentId
-        ? history.map(h => (h.id === currentId ? claimToSave : h))
-        : [claimToSave, ...history];
       setHistory(newHistory);
       setCurrentId(savedId);
       localStorage.setItem(CLAIMS_HISTORY_KEY, JSON.stringify(newHistory));

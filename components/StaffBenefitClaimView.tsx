@@ -525,10 +525,14 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
       items: itemsToSave,
       updatedAt: timestamp,
     };
+    const newHistory = history.some((h) => h.id === savedId)
+      ? history.map((h) => (h.id === savedId ? claimToSave : h))
+      : [claimToSave, ...history];
 
     if (isSupabaseConfigured()) {
       try {
         await firebaseDb.saveBenefitClaim(claimToSave);
+        setHistory(newHistory);
         setCurrentId(savedId);
         onSaved?.(claimToSave);
         const hasLocalReceipts = claimToSave.items?.some((it) => parseLocalBenefitReceiptRef(it.receiptRef));
@@ -548,9 +552,6 @@ const StaffBenefitClaimView: React.FC<StaffBenefitClaimViewProps> = ({
       return;
     }
 
-    const newHistory = currentId
-      ? history.map((h) => (h.id === currentId ? claimToSave : h))
-      : [claimToSave, ...history];
     setHistory(newHistory);
     setCurrentId(savedId);
     localStorage.setItem(BENEFIT_HISTORY_KEY, JSON.stringify(newHistory));
